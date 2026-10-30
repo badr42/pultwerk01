@@ -6,7 +6,7 @@ Wants=network-online.target
 [Service]
 User=%i
 WorkingDirectory=/home/%i/desk-display
-ExecStart=/home/%i/.venvs/display/bin/python /home/%i/desk-display/desk_display.py
+ExecStart=/home/%i/.venvs/display/bin/python /home/%i/desk-display/current/desk_display.py
 Restart=always
 RestartSec=5
 

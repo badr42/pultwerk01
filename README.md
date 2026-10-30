@@ -2,15 +2,46 @@
 
 Round 2.1" screen, needle gauge, speaker, light sensor and two keys on a Raspberry Pi Zero 2 W, controlled from your phone.
 
-## Install or update (on the Pi)
+## Install (on the Pi)
 
 ```
-cd ~/pultwerk01-app        # wherever you unzipped this folder
+cd ~
+curl -fsSL https://github.com/badr42/pultwerk01/archive/refs/heads/stable.tar.gz | tar xz
+cd pultwerk01-stable
 bash install.sh
 sudo reboot                # only if the installer says interfaces changed
 ```
 
-The installer copies everything to `~/desk-display`, installs the packages, switches on SPI (screen), I²C (light sensor) and I²S (amp), and starts the `desk-display@<you>` service. Your `settings.json` and photos are kept; your old `config.toml` is saved as `config.toml.bak`.
+The installer sets up `~/desk-display`, installs the packages, switches on SPI (screen), I²C (light sensor) and I²S (amp), and starts the `desk-display@<you>` service and the update timer. Your `config.toml`, `settings.json` and photos are kept. Code from an older install is moved to `releases/pre-update-<date>`.
+
+## Updates
+
+The Pi checks the `stable` branch about once an hour and installs anything new by itself, so you decide when a version goes out by moving that branch (on your computer):
+
+```
+git push origin main:stable
+```
+
+```
+~/desk-display/
+  config.toml  settings.json  photos/     yours; updates never replace them
+  current -> releases/a91c2e04b7d1        the running version
+  releases/                               the last 5 versions
+```
+
+A new version must stay running for 60 seconds. If it doesn't, the Pi switches back to the previous version, restores `settings.json`, and skips that commit until a newer one appears.
+
+| On the Pi | |
+|---|---|
+| See what happened | `journalctl -u desk-update@$USER` |
+| Check now | `sudo systemctl start desk-update@$USER` |
+| Running version | `readlink ~/desk-display/current` |
+| Retry a skipped commit | `rm ~/desk-display/.bad-version` |
+| Stop automatic updates | `sudo systemctl disable --now desk-update@$USER.timer` |
+
+To go back on purpose, move the branch to an older commit: `git push --force origin <commit>:stable`.
+
+Updates cover the code and Python packages in `requirements.txt`. New `apt` packages, boot settings and changed service files need `bash install.sh` again; the update log says when a service file changed. New keys added to `config.example.toml` take effect by themselves.
 
 Then open the control page on your phone (same Wi-Fi): the address is printed by the installer and shown as a QR code on the screen for 20 s after every start. Easiest is to name the Pi once: `sudo hostnamectl set-hostname pultwerk01`, then use **http://pultwerk01.local:8080**. On iPhone, Share → Add to Home Screen makes it an app icon.
 
@@ -55,7 +86,7 @@ Hijri dates and occasions use the Umm al-Qura calendar from aladhan.com (an offl
 ## Checks from the command line
 
 ```
-cd ~/desk-display
+cd ~/desk-display/current
 ~/.venvs/display/bin/python desk_display.py --sound-test     # plays every sound
 ~/.venvs/display/bin/python desk_display.py --gauge-test     # sweeps the needle
 ~/.venvs/display/bin/python desk_display.py --light-test     # prints lux and the brightness it would pick
@@ -69,4 +100,4 @@ Stop the service first for the hardware tests: `sudo systemctl stop desk-display
 
 ## Files
 
-`desk_display.py` display, gauge, sound, sensors · `settings.py` everything the page can change (saved in `settings.json`) · `web.py` + `web_ui.html` the control page (standard library only) · `config.toml` hardware and location · `fonts/` Inter and Noto Kufi Arabic (both SIL Open Font License).
+`desk_display.py` display, gauge, sound, sensors · `settings.py` everything the page can change (saved in `settings.json`) · `web.py` + `web_ui.html` the control page (standard library only) · `config.example.toml` template for the Pi's `config.toml` (hardware and location) · `update.sh`, `desk-update.service`, `desk-update.timer` automatic updates · `fonts/` Inter and Noto Kufi Arabic (both SIL Open Font License).

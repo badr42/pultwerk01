@@ -1,0 +1,10 @@
+[Unit]
+Description=Check hourly for a new desk display version
+
+[Timer]
+OnActiveSec=5min
+OnUnitActiveSec=1h
+RandomizedDelaySec=2min
+
+[Install]
+WantedBy=timers.target

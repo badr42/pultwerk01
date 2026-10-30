@@ -1,0 +1,12 @@
+.DS_Store
+__pycache__/
+*.pyc
+
+# release bundle, rebuilt from the source files
+pultwerk01-app.zip
+
+# written by the app at runtime
+settings.json
+
+# the Pi's own location, pins and password; the template is config.example.toml
+config.toml

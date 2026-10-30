@@ -1,0 +1,3 @@
+gc9b72
+arabic-reshaper
+python-bidi

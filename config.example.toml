@@ -1,4 +1,6 @@
-# Pultwerk01 hardware configuration. Changes here need:  sudo systemctl restart desk-display@$USER
+# Pultwerk01 hardware configuration template. The Pi keeps its own copy in ~/desk-display/config.toml,
+# which updates never replace; any key missing there falls back to this file.
+# Changes need:  sudo systemctl restart desk-display@$USER
 # Everything you change day to day (screens, order, brightness, gauge, sound, tickers)
 # lives in settings.json and is edited from the web page:  http://<pi>:8080
 

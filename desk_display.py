@@ -33,9 +33,10 @@ from zoneinfo import ZoneInfo
 
 from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont, ImageOps, features
 
-from settings import GAUGE_METRICS, SCREENS, Settings
+from settings import GAUGE_METRICS, SCREENS, Settings, _merge as merge_settings
 
 HERE = Path(__file__).resolve().parent
+DATA = HERE.parent.parent if HERE.parent.name == "releases" else HERE   # config and settings outlive a release
 S = 360
 BG = (0, 0, 0)
 FG = (255, 255, 255)
@@ -1777,14 +1778,19 @@ def preview(cfg, settings, out):
 
 
 def load_config(path):
-    with open(path, "rb") as f:
-        return tomllib.load(f)
+    """config.example.toml supplies any key the Pi's own config.toml does not have (yet)."""
+    with open(HERE / "config.example.toml", "rb") as f:
+        cfg = tomllib.load(f)
+    if Path(path).exists():
+        with open(path, "rb") as f:
+            cfg = merge_settings(cfg, tomllib.load(f))
+    return cfg
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--config", default=str(HERE / "config.toml"))
-    ap.add_argument("--settings", default=str(HERE / "settings.json"))
+    ap.add_argument("--config", default=str(DATA / "config.toml"))
+    ap.add_argument("--settings", default=str(DATA / "settings.json"))
     ap.add_argument("--preview", metavar="DIR", help="render all slides with demo data and exit")
     ap.add_argument("--light-test", action="store_true", help="print light readings and exit")
     ap.add_argument("--gauge-test", action="store_true", help="sweep the needle and exit")
