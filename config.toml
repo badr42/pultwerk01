@@ -1,0 +1,66 @@
+# Pultwerk01 hardware configuration. Changes here need:  sudo systemctl restart desk-display@$USER
+# Everything you change day to day (screens, order, brightness, gauge, sound, tickers)
+# lives in settings.json and is edited from the web page:  http://<pi>:8080
+
+[location]
+name = "Riyadh"
+lat = 24.7136          # put your own coordinates here (radar, weather, prayer, sun, moon)
+lon = 46.6753
+timezone = "Asia/Riyadh"
+
+[photos]
+folder = "~/desk-display/photos"   # the web page uploads here; any JPG/PNG/WebP, subfolders included
+shuffle = true
+
+[prayer]
+method = 4                         # 4 = Umm al-Qura (Makkah), the official Saudi calendar
+
+[radar]
+radius_nm = 20
+poll_seconds = 3
+timeout_minutes = 0                # 0 = stay on until Button B is pressed again
+
+[web]
+enabled = true
+port = 8080
+bind = "0.0.0.0"                   # reachable from your phone on the same Wi-Fi
+password = ""                      # set one to make the page ask for it (any user name)
+
+[display]
+rotation = 0
+# pins (BCM). 18/19/21 are the I2S amp, so the backlight moved to GPIO 12 (hardware PWM0).
+dc = 25
+rst = 24
+bl = 12
+speed_hz = 40000000
+
+[buttons]
+cycle = 22                         # Button A: short = next slide, long = sleep/wake, in radar = exit radar
+radar = 23                         # Button B: toggle radar
+long_press_seconds = 1.5
+
+[gauge]
+enabled = true
+servo_pin = 13                     # SG90 signal (orange). Red -> 5 V, brown -> GND, 1000 uF across them
+min_angle = -80                    # needle at the left end of the dial  (tune on the printed dial)
+max_angle = 80                     # right end
+park_angle = -80                   # where the needle rests for the "off" metric and at night
+settle_seconds = 0.6               # servo is powered only while moving, then released (no hum, no jitter)
+backlight_pin = 27                 # dial light: white LED, GPIO27 -> 68 ohm -> LED -> GND (about 5-10 mA); -1 = none
+
+[sound]
+enabled = true
+device = "plughw:CARD=MAX98357A,DEV=0"   # the I2S amp; check the name with: aplay -l
+sample_rate = 22050
+
+[light]
+# "bh1750" = GY-302 on I2C (SDA pin 3, SCL pin 5, VCC 3.3 V), "ldr" = the old LDR+capacitor on GPIO 17, "none"
+sensor = "bh1750"
+address = 0x23                     # 0x5C if ADDR is tied high
+interval = 2                       # seconds between readings
+dark_lux = 3                       # at or below this the screen is at min brightness
+bright_lux = 300                   # at or above this it is at max brightness
+# LDR fallback only:
+pin = 17
+bright_s = 0.004
+dark_s = 0.300

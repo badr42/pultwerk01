@@ -1,0 +1,14 @@
+[Unit]
+Description=Desk display
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=%i
+WorkingDirectory=/home/%i/desk-display
+ExecStart=/home/%i/.venvs/display/bin/python /home/%i/desk-display/desk_display.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

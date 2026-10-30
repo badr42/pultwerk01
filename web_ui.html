@@ -1,0 +1,573 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#efebe2" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#141413" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Pultwerk01">
+<title>Pultwerk01</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%23151515'/%3E%3Ccircle cx='32' cy='32' r='5' fill='%23e8590c'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#efebe2; --card:#faf8f3; --line:#dcd6c9; --ink:#1d1c1a; --mute:#7a756c; --faint:#b5afa3;
+  --accent:#e8590c; --accent-ink:#fff; --screen:#0b0b0b; --off:#cfc9bc;
+  --r:14px; --gut:16px;
+  font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#141413; --card:#1d1d1b; --line:#33322e; --ink:#eeebe4; --mute:#97928a; --faint:#5d5a55; --off:#3d3c38;
+  color-scheme:dark;
+}}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;scroll-padding-top:64px}
+body{margin:0;background:var(--bg);color:var(--ink);font-size:15px;line-height:1.4;-webkit-tap-highlight-color:transparent}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+.wrap{max-width:560px;margin:0 auto;padding:0 var(--gut)}
+
+/* header */
+header{padding:calc(14px + env(safe-area-inset-top)) 0 6px;text-align:center}
+.brand{font-size:11px;letter-spacing:.32em;font-weight:600;color:var(--mute)}
+.live{position:relative;width:min(56vw,220px);aspect-ratio:1;margin:14px auto 10px;border-radius:50%;
+  background:var(--screen);box-shadow:0 0 0 7px #191917,0 0 0 8px var(--line),0 10px 30px rgba(0,0,0,.18);overflow:hidden}
+.live img{width:100%;height:100%;display:block;border-radius:50%}
+.live .zz{position:absolute;inset:0;display:none;align-items:center;justify-content:center;color:#666;font-size:12px;letter-spacing:.3em}
+.live.asleep .zz{display:flex}.live.asleep img{opacity:.0}
+.now{font-size:13px;color:var(--mute);min-height:20px}
+.now b{color:var(--ink);font-weight:500}
+.quick{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0 4px}
+.quick button{border:1px solid var(--line);background:var(--card);border-radius:12px;padding:11px 0;font-size:14px}
+.quick button:active{transform:scale(.97)}
+.quick button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+
+/* tabs */
+nav{position:sticky;top:0;z-index:5;background:color-mix(in srgb,var(--bg) 88%,transparent);
+  backdrop-filter:saturate(1.4) blur(10px);-webkit-backdrop-filter:saturate(1.4) blur(10px);border-bottom:1px solid var(--line)}
+nav .wrap{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-top:10px;padding-bottom:10px}
+nav .wrap::-webkit-scrollbar{display:none}
+nav a{flex:none;text-decoration:none;color:var(--mute);font-size:13px;padding:6px 12px;border-radius:99px;border:1px solid transparent}
+nav a.on{color:var(--ink);border-color:var(--line);background:var(--card)}
+
+/* sections */
+section{padding:26px 0 6px}
+h2{font-size:11px;letter-spacing:.28em;text-transform:uppercase;color:var(--mute);font-weight:600;margin:0 0 10px 2px}
+.hint{font-size:13px;color:var(--mute);margin:-2px 2px 12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.row{display:flex;align-items:center;gap:12px;padding:12px 14px;min-height:56px;border-top:1px solid var(--line)}
+.row:first-child{border-top:0}
+.grow{flex:1;min-width:0}
+.name{font-weight:500}
+.desc{font-size:12.5px;color:var(--mute);margin-top:1px}
+.tag{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);font-weight:600;margin-left:6px;white-space:nowrap}
+.row.off .name{color:var(--mute)}
+#screenList .row{gap:10px;padding:10px 12px}
+#screenList .name,#screenList .desc{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#screenList .secs .mini{width:30px;height:30px}
+#screenList .secs span{min-width:34px}
+.up{text-transform:uppercase}
+.row.current{box-shadow:inset 3px 0 0 var(--accent)}
+.val{font-variant-numeric:tabular-nums;color:var(--mute);font-size:13px;white-space:nowrap}
+
+/* switch */
+.sw{position:relative;flex:none;width:46px;height:28px}
+.sw input{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer;z-index:1}
+.sw span{position:absolute;inset:0;border-radius:99px;background:var(--off);transition:background .18s}
+.sw span::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;
+  box-shadow:0 1px 3px rgba(0,0,0,.25);transition:transform .18s}
+.sw input:checked+span{background:var(--accent)}
+.sw input:checked+span::after{transform:translateX(18px)}
+.sw input:focus-visible+span{outline:2px solid var(--accent);outline-offset:2px}
+
+/* small controls */
+.mini{flex:none;width:34px;height:34px;border-radius:10px;border:1px solid var(--line);background:transparent;font-size:16px;line-height:1;padding:0}
+.mini:disabled{opacity:.3}
+.mini:active{background:var(--line)}
+.secs{display:flex;align-items:center;gap:4px}
+.secs span{min-width:38px;text-align:center;font-variant-numeric:tabular-nums;font-size:13px}
+.order{display:flex;flex-direction:column;gap:3px}
+.order .mini{height:22px;width:30px;font-size:11px;border-radius:7px}
+.btn{border:1px solid var(--line);background:var(--card);border-radius:12px;padding:10px 14px;font-size:14px}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn:active{transform:scale(.98)}
+.btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+input[type=range]{width:100%;accent-color:var(--accent);height:28px}
+input[type=time],input[type=date],input[type=text],input[type=number],select{
+  background:transparent;border:1px solid var(--line);border-radius:10px;padding:8px 10px;min-height:38px;min-width:0}
+input[type=text]{width:100%}
+.slider{padding:12px 14px;border-top:1px solid var(--line)}
+.slider:first-child{border-top:0}
+.slider .top{display:flex;justify-content:space-between;font-size:14px;margin-bottom:2px}
+.radio{width:20px;height:20px;flex:none;border-radius:50%;border:1.5px solid var(--faint);display:grid;place-items:center}
+.radio.on{border-color:var(--accent)}
+.radio.on::after{content:"";width:10px;height:10px;border-radius:50%;background:var(--accent)}
+.pick{cursor:pointer}
+.tk{display:grid;grid-template-columns:1.2fr 1fr auto auto;gap:8px;align-items:center}
+.tk input{text-transform:uppercase}
+.state{font-size:11px;letter-spacing:.08em;color:var(--faint)}
+.state.ok{color:#2e9e62}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.chip{border:1px solid var(--line);background:transparent;border-radius:99px;padding:5px 10px;font-size:12.5px;color:var(--mute)}
+
+/* photos */
+.upload{display:flex;align-items:center;gap:12px}
+.upload input{display:none}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:12px}
+.ph{position:relative;aspect-ratio:1;border-radius:10px;overflow:hidden;background:var(--line)}
+.ph img{width:100%;height:100%;object-fit:cover;display:block}
+.ph button.del{position:absolute;top:5px;right:5px;width:28px;height:28px;border-radius:50%;border:0;
+  background:rgba(0,0,0,.55);color:#fff;font-size:15px;line-height:28px;padding:0}
+.ph button.show{position:absolute;inset:0;background:transparent;border:0}
+.empty{color:var(--mute);font-size:13px;padding:14px;text-align:center}
+
+.toast{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom));transform:translate(-50%,20px);opacity:0;
+  background:var(--ink);color:var(--bg);font-size:13px;padding:9px 16px;border-radius:99px;transition:all .2s;pointer-events:none;z-index:9;max-width:90vw}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+.toast.err{background:#c0392b;color:#fff}
+footer{color:var(--faint);font-size:12px;text-align:center;padding:30px 0 calc(40px + env(safe-area-inset-bottom))}
+.split{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:12px 14px;border-top:1px solid var(--line)}
+.split label{font-size:12px;color:var(--mute);display:flex;flex-direction:column;gap:4px}
+</style>
+</head>
+<body>
+<header class="wrap">
+  <div class="brand">PULTWERK01</div>
+  <div class="live" id="live"><img id="screen" alt="What the display shows now"><div class="zz">ASLEEP</div></div>
+  <div class="now" id="now">Connecting…</div>
+  <div class="quick">
+    <button data-act="prev" aria-label="Previous screen">‹&nbsp;Prev</button>
+    <button data-act="next" aria-label="Next screen">Next&nbsp;›</button>
+    <button data-act="radar" id="radarBtn">Radar</button>
+    <button data-act="toggle_sleep" id="sleepBtn">Sleep</button>
+  </div>
+</header>
+
+<nav><div class="wrap" id="tabs">
+  <a href="#screens">Screens</a><a href="#display">Display</a><a href="#gauge">Gauge</a><a href="#sound">Sound</a>
+  <a href="#tickers">Tickers</a><a href="#photos">Photos</a><a href="#more">More</a>
+</div></nav>
+
+<main class="wrap">
+  <section id="screens">
+    <h2>Screens</h2>
+    <p class="hint">Switch screens on or off, set how long each stays, and use the arrows to change the order. Tap a name to show it now.</p>
+    <div class="card" id="screenList"></div>
+  </section>
+
+  <section id="display">
+    <h2>Display</h2>
+    <div class="card">
+      <div class="row"><div class="grow"><div class="name">Automatic brightness</div><div class="desc" id="luxLine">Follows the light sensor</div></div>
+        <label class="sw"><input type="checkbox" id="autoBright"><span></span></label></div>
+      <div id="autoBox">
+        <div class="slider"><div class="top"><span>Darkest room</span><span class="val" id="minVal"></span></div><input type="range" id="minBright" min="1" max="100"></div>
+        <div class="slider"><div class="top"><span>Brightest room</span><span class="val" id="maxVal"></span></div><input type="range" id="maxBright" min="1" max="100"></div>
+      </div>
+      <div id="manualBox"><div class="slider"><div class="top"><span>Brightness</span><span class="val" id="brightVal"></span></div><input type="range" id="bright" min="1" max="100"></div></div>
+    </div>
+    <div class="card" style="margin-top:12px">
+      <div class="row"><div class="grow"><div class="name">Sleep at night</div><div class="desc">Screen and dial light off; any key wakes it</div></div>
+        <label class="sw"><input type="checkbox" id="night"><span></span></label></div>
+      <div class="split" id="nightBox"><label>Sleep at<input type="time" id="sleepAt"></label><label>Wake at<input type="time" id="wakeAt"></label></div>
+      <div class="row"><div class="grow"><div class="name">24-hour clock</div></div><label class="sw"><input type="checkbox" id="clock24"><span></span></label></div>
+      <div class="row"><div class="grow"><div class="name">Start-up QR code</div><div class="desc">Show the address of this page for 20 s after the display starts</div></div>
+        <label class="sw"><input type="checkbox" id="bootInfo"><span></span></label></div>
+    </div>
+  </section>
+
+  <section id="gauge">
+    <h2>Gauge</h2>
+    <div class="card">
+      <div class="row"><div class="grow"><div class="name">Dial light</div><div class="desc">The LED behind the dial face</div></div>
+        <label class="sw"><input type="checkbox" id="dialLight"><span></span></label></div>
+    </div>
+    <p class="hint" style="margin-top:14px">What the needle shows:</p>
+    <div class="card" id="metricList"></div>
+    <div class="btns"><button class="btn" id="sweep">Sweep the needle</button></div>
+  </section>
+
+  <section id="sound">
+    <h2>Sound</h2>
+    <div class="card">
+      <div class="row"><div class="grow"><div class="name">Sound</div><div class="desc" id="muteLine"></div></div>
+        <label class="sw"><input type="checkbox" id="soundOn"><span></span></label></div>
+      <div class="slider"><div class="top"><span>Volume</span><span class="val" id="volVal"></span></div><input type="range" id="vol" min="1" max="100"></div>
+      <div class="split"><label>Quiet from<input type="time" id="quietFrom"></label><label>Quiet until<input type="time" id="quietTo"></label></div>
+    </div>
+    <p class="hint" style="margin-top:14px">Make a sound for:</p>
+    <div class="card" id="eventList"></div>
+    <div class="card" style="margin-top:12px">
+      <div class="row"><div class="grow"><div class="name">Share price alert at</div><div class="desc">Day change in either direction, once a day per ticker</div></div>
+        <input type="number" id="priceThr" min="0.1" max="50" step="0.1" style="width:84px;text-align:right"><span class="val">%</span></div>
+    </div>
+  </section>
+
+  <section id="tickers">
+    <h2>Tickers</h2>
+    <p class="hint">One slide per ticker, up to 8. Yahoo Finance codes: Tadawul shares end in <b>.SR</b>.</p>
+    <div class="card" id="tickerList"></div>
+    <div class="btns"><button class="btn" id="addTicker">Add ticker</button></div>
+    <div class="chips" id="tickerChips"></div>
+  </section>
+
+  <section id="photos">
+    <h2>Photos</h2>
+    <div class="card"><div class="row upload">
+      <div class="grow"><div class="name" id="photoCount">Photos</div><div class="desc" id="upState">Resized on your phone before upload</div></div>
+      <label class="btn primary" for="files">Upload</label><input type="file" id="files" accept="image/*" multiple>
+    </div></div>
+    <div class="grid" id="photoGrid"></div>
+  </section>
+
+  <section id="more">
+    <h2>World clocks</h2>
+    <div class="card" id="clockList"></div>
+    <section style="padding-top:22px">
+      <h2>Countdown</h2>
+      <div class="card"><div class="split"><label>Label<input type="text" id="cdLabel" class="up" maxlength="16" autocapitalize="characters"></label><label>Date<input type="date" id="cdDate"></label></div></div>
+    </section>
+    <section style="padding-top:22px">
+      <h2>Location</h2>
+      <div class="card"><div class="row"><div class="grow"><div class="name" id="locName"></div><div class="desc" id="locLine"></div></div></div></div>
+      <p class="hint" style="margin-top:10px">Prayer times, weather, sun, moon and radar use this. Change it in config.toml on the Pi.</p>
+      <div class="btns"><button class="btn" id="refresh">Refresh prices and weather now</button></div>
+    </section>
+  </section>
+</main>
+<footer id="foot">Pultwerk01</footer>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const h = (tag, attrs = {}, ...kids) => {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") e.className = v;
+    else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+    else if (v === true) e.setAttribute(k, "");
+    else if (v !== false && v != null) e.setAttribute(k, v);
+  }
+  for (const k of kids.flat()) if (k != null) e.append(k.nodeType ? k : document.createTextNode(k));
+  return e;
+};
+let S, CAT, ST = {}, LOC = {};
+const STEPS = [3, 5, 8, 10, 12, 15, 20, 30, 45, 60, 90, 120, 180, 300, 600];
+const ZONES = ["Asia/Riyadh","Asia/Dubai","Asia/Kuwait","Asia/Qatar","Asia/Bahrain","Africa/Cairo","Asia/Amman","Europe/Istanbul",
+  "Europe/London","Europe/Paris","Europe/Berlin","Europe/Madrid","Europe/Moscow","Asia/Karachi","Asia/Kolkata","Asia/Singapore",
+  "Asia/Hong_Kong","Asia/Shanghai","Asia/Tokyo","Australia/Sydney","America/New_York","America/Chicago","America/Denver",
+  "America/Los_Angeles","America/Sao_Paulo","Africa/Johannesburg","Africa/Lagos","UTC"];
+const TICKER_IDEAS = [["2222.SR","ARAMCO"],["1120.SR","ALRAJHI"],["7010.SR","STC"],["AAPL","AAPL"],["NVDA","NVDA"],
+  ["ORCL","ORACLE"],["BTC-USD","BITCOIN"],["GC=F","GOLD"],["EURSAR=X","EUR/SAR"]];
+
+/* ---------- api ---------- */
+async function api(path, opts = {}) {
+  const r = await fetch(path, opts);
+  const ct = r.headers.get("content-type") || "";
+  const body = ct.includes("json") ? await r.json() : null;
+  if (!r.ok) throw new Error((body && body.error) || ("HTTP " + r.status));
+  return body;
+}
+const post = (path, data) => api(path, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(data)});
+let pending = {}, saveTimer = null;
+function merge(a, b) {
+  for (const [k, v] of Object.entries(b)) {
+    if (v && typeof v === "object" && !Array.isArray(v) && a[k] && typeof a[k] === "object" && !Array.isArray(a[k])) merge(a[k], v);
+    else a[k] = v;
+  }
+  return a;
+}
+function save(patch, delay = 350) {
+  merge(S, JSON.parse(JSON.stringify(patch)));
+  merge(pending, patch);
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(flush, delay);
+}
+async function flush() {
+  const p = pending; pending = {};
+  if (!Object.keys(p).length) return;
+  try { S = await post("/api/settings", p); toast("Saved"); }
+  catch (e) { toast("Not saved: " + e.message, true); }
+}
+async function act(name, arg) {
+  try { await post("/api/action", {name, arg}); setTimeout(poll, 350); }
+  catch (e) { toast(e.message, true); }
+}
+let toastT;
+function toast(msg, err) {
+  const t = $("#toast"); t.textContent = msg; t.className = "toast show" + (err ? " err" : "");
+  clearTimeout(toastT); toastT = setTimeout(() => t.className = "toast" + (err ? " err" : ""), err ? 3500 : 1200);
+}
+const screenName = id => id === "radar" ? "Radar" : ((CAT.screens.find(s => s.id === id) || {}).name || id);
+
+/* ---------- screens ---------- */
+function renderScreens() {
+  const box = $("#screenList"); box.replaceChildren();
+  S.screens.forEach((sc, i) => {
+    const meta = CAT.screens.find(c => c.id === sc.id) || {name: sc.id, desc: ""};
+    let desc = meta.desc;
+    if (sc.id === "price") desc = `${S.tickers.length} ticker${S.tickers.length === 1 ? "" : "s"} · ${sc.seconds} s each`;
+    const step = d => {
+      let k = STEPS.findIndex(v => v >= sc.seconds); if (k < 0) k = STEPS.length - 1;
+      if (STEPS[k] !== sc.seconds && d < 0) k += 1;
+      const n = STEPS[Math.max(0, Math.min(STEPS.length - 1, k + d))];
+      const list = S.screens.map(s => s.id === sc.id ? {...s, seconds: n} : s);
+      save({screens: list}); renderScreens();
+    };
+    const move = d => {
+      const list = S.screens.slice(); const j = i + d;
+      [list[i], list[j]] = [list[j], list[i]];
+      save({screens: list}); renderScreens();
+    };
+    box.append(h("div", {class: "row" + (sc.enabled ? "" : " off") + (ST.slide_id === sc.id ? " current" : ""), "data-id": sc.id},
+      h("label", {class: "sw"}, h("input", {type: "checkbox", checked: sc.enabled, "aria-label": "Show " + meta.name,
+        onchange: e => { save({screens: S.screens.map(s => s.id === sc.id ? {...s, enabled: e.target.checked} : s)}); renderScreens(); }}), h("span")),
+      h("div", {class: "grow pick", onclick: () => { if (!sc.enabled) return toast("Switch it on first"); act("show", sc.id); toast("Showing " + meta.name); }},
+        h("div", {class: "name"}, meta.name), h("div", {class: "desc"}, desc)),
+      h("div", {class: "secs"},
+        h("button", {class: "mini", "aria-label": "Shorter", onclick: () => step(-1)}, "−"),
+        h("span", {}, sc.seconds + " s"),
+        h("button", {class: "mini", "aria-label": "Longer", onclick: () => step(1)}, "+")),
+      h("div", {class: "order"},
+        h("button", {class: "mini", "aria-label": "Move up", disabled: i === 0, onclick: () => move(-1)}, "▲"),
+        h("button", {class: "mini", "aria-label": "Move down", disabled: i === S.screens.length - 1, onclick: () => move(1)}, "▼"))));
+  });
+}
+
+/* ---------- display ---------- */
+function renderDisplay() {
+  const d = S.display;
+  $("#autoBright").checked = d.auto_brightness;
+  $("#autoBox").style.display = d.auto_brightness ? "" : "none";
+  $("#manualBox").style.display = d.auto_brightness ? "none" : "";
+  $("#minBright").value = d.min_brightness; $("#minVal").textContent = d.min_brightness + " %";
+  $("#maxBright").value = d.max_brightness; $("#maxVal").textContent = d.max_brightness + " %";
+  $("#bright").value = d.brightness; $("#brightVal").textContent = d.brightness + " %";
+  $("#night").checked = d.night_enabled; $("#nightBox").style.display = d.night_enabled ? "" : "none";
+  $("#sleepAt").value = d.sleep_at; $("#wakeAt").value = d.wake_at;
+  $("#clock24").checked = d.clock_24h; $("#bootInfo").checked = d.boot_info;
+}
+function wireDisplay() {
+  $("#autoBright").onchange = e => { save({display: {auto_brightness: e.target.checked}}); renderDisplay(); };
+  const rng = (id, key, out) => $(id).oninput = e => {
+    let v = +e.target.value;
+    if (key === "min_brightness" && v > S.display.max_brightness) v = S.display.max_brightness;
+    if (key === "max_brightness" && v < S.display.min_brightness) v = S.display.min_brightness;
+    e.target.value = v; $(out).textContent = v + " %"; save({display: {[key]: v}}, 200);
+  };
+  rng("#minBright", "min_brightness", "#minVal"); rng("#maxBright", "max_brightness", "#maxVal"); rng("#bright", "brightness", "#brightVal");
+  $("#night").onchange = e => { save({display: {night_enabled: e.target.checked}}); renderDisplay(); };
+  $("#sleepAt").onchange = e => e.target.value && save({display: {sleep_at: e.target.value}});
+  $("#wakeAt").onchange = e => e.target.value && save({display: {wake_at: e.target.value}});
+  $("#clock24").onchange = e => save({display: {clock_24h: e.target.checked}});
+  $("#bootInfo").onchange = e => save({display: {boot_info: e.target.checked}});
+}
+
+/* ---------- gauge ---------- */
+function fmtRange(m) { return m.id === "off" ? "Needle rests at the left" : `${m.min} to ${m.max}${m.unit ? " " + m.unit : ""}`; }
+function renderGauge() {
+  $("#dialLight").checked = S.gauge.backlight;
+  const box = $("#metricList"); box.replaceChildren();
+  for (const m of CAT.gauge_metrics) {
+    const on = S.gauge.metric === m.id;
+    const live = on && ST.gauge_value != null ? `${ST.gauge_value}${m.unit ? " " + m.unit : ""}` : "";
+    box.append(h("div", {class: "row pick", role: "radio", "aria-checked": on ? "true" : "false", tabindex: "0",
+        onclick: () => { save({gauge: {metric: m.id}}); renderGauge(); }},
+      h("span", {class: "radio" + (on ? " on" : "")}),
+      h("div", {class: "grow"}, h("div", {class: "name"}, m.name), h("div", {class: "desc"}, fmtRange(m))),
+      h("span", {class: "val", id: on ? "gaugeLive" : null}, live)));
+  }
+}
+
+/* ---------- sound ---------- */
+function renderSound() {
+  const s = S.sound;
+  $("#soundOn").checked = !s.muted;
+  $("#muteLine").textContent = s.muted ? "Muted: no sounds at all" : "Key clicks still play in quiet hours";
+  $("#vol").value = s.volume; $("#volVal").textContent = s.volume + " %";
+  $("#quietFrom").value = s.quiet_from; $("#quietTo").value = s.quiet_to;
+  $("#priceThr").value = s.price_threshold_pct;
+  const box = $("#eventList"); box.replaceChildren();
+  for (const ev of CAT.sound_events) {
+    box.append(h("div", {class: "row"},
+      h("label", {class: "sw"}, h("input", {type: "checkbox", checked: !!s.events[ev.id], "aria-label": ev.name,
+        onchange: e => save({sound: {events: {[ev.id]: e.target.checked}}})}), h("span")),
+      h("div", {class: "grow"}, h("div", {class: "name"}, ev.name), h("div", {class: "desc"}, ev.desc)),
+      h("button", {class: "btn", style: "padding:7px 12px", onclick: () => act("sound_test", ev.id)}, "Play")));
+  }
+}
+function wireSound() {
+  $("#soundOn").onchange = e => { save({sound: {muted: !e.target.checked}}); renderSound(); };
+  $("#vol").oninput = e => { $("#volVal").textContent = e.target.value + " %"; save({sound: {volume: +e.target.value}}, 250); };
+  $("#vol").onchange = () => setTimeout(() => act("sound_test", "hour"), 300);
+  $("#quietFrom").onchange = e => e.target.value && save({sound: {quiet_from: e.target.value}});
+  $("#quietTo").onchange = e => e.target.value && save({sound: {quiet_to: e.target.value}});
+  $("#priceThr").onchange = e => save({sound: {price_threshold_pct: +e.target.value || 2}});
+}
+
+/* ---------- tickers ---------- */
+let draft = [];
+function renderTickers() {
+  const box = $("#tickerList"); box.replaceChildren();
+  if (!draft.length) box.append(h("div", {class: "empty"}, "No tickers: the share price screen is skipped."));
+  draft.forEach((t, i) => {
+    const live = (ST.quotes_ok || []).includes(t.symbol);
+    const commit = () => {
+      const clean = draft.filter(x => x.symbol.trim()).map(x => ({symbol: x.symbol.trim().toUpperCase(), label: (x.label || x.symbol).trim().toUpperCase()}));
+      save({tickers: clean}, 0); setTimeout(renderScreens, 50);
+    };
+    const mv = d => { [draft[i], draft[i + d]] = [draft[i + d], draft[i]]; commit(); renderTickers(); };
+    box.append(h("div", {class: "row"}, h("div", {class: "grow tk"},
+      h("div", {}, h("input", {type: "text", value: t.symbol, placeholder: "2222.SR", "aria-label": "Symbol", autocapitalize: "characters",
+          autocomplete: "off", spellcheck: "false", oninput: e => t.symbol = e.target.value, onchange: commit}),
+        h("div", {class: "state sstate" + (live ? " ok" : "")}, t.symbol ? (live ? "● LIVE" : "WAITING FOR DATA") : "")),
+      h("div", {}, h("input", {type: "text", value: t.label, placeholder: "LABEL", maxlength: "12", "aria-label": "Label",
+          autocapitalize: "characters", oninput: e => t.label = e.target.value, onchange: commit}), h("div", {class: "state"}, " ")),
+      h("div", {class: "order"},
+        h("button", {class: "mini", disabled: i === 0, "aria-label": "Up", onclick: () => mv(-1)}, "▲"),
+        h("button", {class: "mini", disabled: i === draft.length - 1, "aria-label": "Down", onclick: () => mv(1)}, "▼")),
+      h("button", {class: "mini", "aria-label": "Remove", onclick: () => { draft.splice(i, 1); commit(); renderTickers(); }}, "×"))));
+  });
+  $("#addTicker").disabled = draft.length >= 8;
+  const chips = $("#tickerChips"); chips.replaceChildren();
+  for (const [sym, label] of TICKER_IDEAS) {
+    if (draft.some(t => t.symbol.toUpperCase() === sym)) continue;
+    chips.append(h("button", {class: "chip", onclick: () => {
+      if (draft.length >= 8) return toast("Eight tickers at most", true);
+      draft.push({symbol: sym, label}); save({tickers: draft.filter(x => x.symbol)}, 0); renderTickers(); setTimeout(renderScreens, 50);
+    }}, "+ " + sym + (label !== sym ? " · " + label : "")));
+  }
+}
+
+/* ---------- photos ---------- */
+async function loadPhotos() {
+  try {
+    const list = await api("/api/photos");
+    $("#photoCount").textContent = `${list.length} photo${list.length === 1 ? "" : "s"}`;
+    const g = $("#photoGrid"); g.replaceChildren();
+    if (!list.length) g.append(h("div", {class: "empty", style: "grid-column:1/-1"}, "No photos yet."));
+    for (const p of list) {
+      const q = encodeURIComponent(p.name);
+      g.append(h("div", {class: "ph"},
+        h("img", {src: `/api/photos/thumb?name=${q}&v=${p.mtime}`, loading: "lazy", alt: p.name}),
+        h("button", {class: "show", "aria-label": "Show " + p.name, onclick: async () => {
+          try { await post("/api/action", {name: "show_photo", arg: p.name}); toast("Showing it now"); setTimeout(poll, 500); }
+          catch (e) { toast(e.message, true); } }}),
+        h("button", {class: "del", "aria-label": "Delete " + p.name, onclick: async () => {
+          if (!confirm(`Delete ${p.name}?`)) return;
+          try { await api(`/api/photos?name=${q}`, {method: "DELETE"}); loadPhotos(); } catch (e) { toast(e.message, true); } }}, "×")));
+    }
+  } catch (e) { $("#photoCount").textContent = "Photos unavailable"; }
+}
+async function shrink(file, max = 1440) {
+  try {
+    const bmp = await createImageBitmap(file, {imageOrientation: "from-image"});
+    const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
+    const c = document.createElement("canvas");
+    c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+    c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+    const blob = await new Promise(r => c.toBlob(r, "image/jpeg", 0.88));
+    if (!blob) throw new Error("encode");
+    return {blob, name: file.name.replace(/\.[^.]+$/, "") + ".jpg"};
+  } catch (e) { return {blob: file, name: file.name}; }       // let the Pi try the original
+}
+async function upload(files) {
+  const st = $("#upState"); let ok = 0, n = 0;
+  for (const f of files) {
+    n++; st.textContent = `Uploading ${n} of ${files.length}…`;
+    try {
+      const {blob, name} = await shrink(f);
+      const r = await fetch(`/api/photos?name=${encodeURIComponent(name)}`, {method: "POST", body: blob});
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status);
+      ok++;
+    } catch (e) { toast(`${f.name}: ${e.message}`, true); }
+  }
+  st.textContent = ok ? `Uploaded ${ok} of ${files.length}. New photos come up next.` : "Resized on your phone before upload";
+  $("#files").value = ""; loadPhotos();
+}
+
+/* ---------- more ---------- */
+function renderMore() {
+  const box = $("#clockList"); box.replaceChildren();
+  const wc = S.worldclock.slice();
+  while (wc.length < 3) wc.push({name: "", tz: "UTC"});
+  const commit = () => save({worldclock: wc.filter(w => w.name.trim())}, 0);
+  wc.forEach(w => {
+    const zones = ZONES.includes(w.tz) ? ZONES : [w.tz, ...ZONES];
+    box.append(h("div", {class: "split"},
+      h("label", {}, "City", h("input", {type: "text", class: "up", value: w.name, maxlength: "10", placeholder: "LONDON", autocapitalize: "characters",
+        oninput: e => w.name = e.target.value.toUpperCase(), onchange: commit})),
+      h("label", {}, "Time zone", h("select", {onchange: e => { w.tz = e.target.value; commit(); }},
+        zones.map(z => h("option", {value: z, selected: z === w.tz}, z.replace("_", " ")))))));
+  });
+  $("#cdLabel").value = S.countdown.label; $("#cdDate").value = S.countdown.date;
+  $("#locName").textContent = LOC.name || "Location";
+  $("#locLine").textContent = LOC.lat != null ? `${(+LOC.lat).toFixed(4)}, ${(+LOC.lon).toFixed(4)} · ${LOC.timezone}` : "";
+}
+
+/* ---------- live status ---------- */
+let polling = false, imgBusy = false;
+async function poll() {
+  if (polling || document.hidden) return;
+  polling = true;
+  try {
+    ST = await api("/api/status");
+    const bits = [`<b>${ST.asleep ? "Asleep" : ST.slide ? screenName(ST.slide_id) + (ST.slide.includes("·") ? " · " + ST.slide.split("·")[1].trim() : "") : "…"}</b>`];
+    if (ST.brightness != null) bits.push(`${ST.brightness} %`);
+    if (ST.lux != null) bits.push(`${ST.lux} lx`);
+    $("#now").innerHTML = bits.join(" &nbsp;·&nbsp; ");
+    $("#live").classList.toggle("asleep", !!ST.asleep);
+    $("#sleepBtn").textContent = ST.asleep ? "Wake" : "Sleep";
+    $("#radarBtn").classList.toggle("on", !!ST.radar);
+    $("#luxLine").textContent = ST.lux == null ? "Follows the light sensor"
+      : S.display.auto_brightness ? `Room ${ST.lux} lx → ${ST.brightness} %` : `Off · room is ${ST.lux} lx`;
+    document.querySelectorAll("#screenList .row").forEach(r => r.classList.toggle("current", r.dataset.id === ST.slide_id));
+    const gl = $("#gaugeLive"); if (gl) { const m = CAT.gauge_metrics.find(m => m.id === S.gauge.metric);
+      gl.textContent = ST.gauge_value != null ? `${ST.gauge_value}${m && m.unit ? " " + m.unit : ""}` : ""; }
+    document.querySelectorAll("#tickerList .sstate").forEach((el, i) => {
+      const t = draft[i]; if (!t || !t.symbol) return;
+      const live = (ST.quotes_ok || []).includes(t.symbol.toUpperCase());
+      el.textContent = live ? "● LIVE" : "WAITING FOR DATA"; el.classList.toggle("ok", live); });
+    $("#foot").textContent = `Pultwerk01 · ${ST.ip ? ST.ip : "offline"} · up ${Math.floor(ST.uptime_s / 3600)} h ${Math.floor(ST.uptime_s % 3600 / 60)} min`;
+    if (!imgBusy && !ST.asleep) {
+      imgBusy = true; const img = $("#screen");
+      img.onload = img.onerror = () => imgBusy = false;
+      img.src = "/api/screen.png?t=" + Date.now();
+    }
+  } catch (e) { $("#now").textContent = "Display not reachable"; }
+  polling = false;
+}
+
+/* ---------- start ---------- */
+function renderAll() { renderScreens(); renderDisplay(); renderGauge(); renderSound(); draft = S.tickers.map(t => ({...t})); renderTickers(); renderMore(); }
+async function start() {
+  try {
+    const st = await api("/api/state");
+    S = st.settings; CAT = st.catalogue; ST = st.status; LOC = st.location || {};
+  } catch (e) { $("#now").textContent = "Display not reachable: " + e.message; return; }
+  renderAll(); wireDisplay(); wireSound();
+  document.querySelectorAll("[data-act]").forEach(b => b.onclick = () => act(b.dataset.act));
+  $("#dialLight").onchange = e => save({gauge: {backlight: e.target.checked}});
+  $("#sweep").onclick = () => act("gauge_test");
+  $("#addTicker").onclick = () => { if (draft.length < 8) { draft.push({symbol: "", label: ""}); renderTickers();
+    const ins = document.querySelectorAll("#tickerList input[aria-label=Symbol]"); ins[ins.length - 1].focus(); } };
+  $("#files").onchange = e => e.target.files.length && upload([...e.target.files]);
+  $("#cdLabel").onchange = e => save({countdown: {label: e.target.value.toUpperCase()}}, 0);
+  $("#cdDate").onchange = e => e.target.value && save({countdown: {date: e.target.value}}, 0);
+  $("#refresh").onclick = () => { act("refresh"); toast("Fetching…"); };
+  loadPhotos(); poll(); setInterval(poll, 2000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) poll(); });
+  window.addEventListener("pagehide", flush);
+  // highlight the tab of the section in view
+  const tabs = [...document.querySelectorAll("#tabs a")];
+  const io = new IntersectionObserver(es => es.forEach(en => { if (en.isIntersecting) {
+    tabs.forEach(a => { const on = a.getAttribute("href") === "#" + en.target.id; a.classList.toggle("on", on);
+      if (on) a.parentNode.scrollTo({left: a.offsetLeft - 16, behavior: "smooth"}); }); } }), {rootMargin: "-45% 0px -50% 0px"});
+  document.querySelectorAll("main > section").forEach(s => io.observe(s));
+}
+start();
+</script>
+</body>
+</html>

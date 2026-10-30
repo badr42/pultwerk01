@@ -1,0 +1,11 @@
+[Unit]
+Description=Desk display health monitor
+After=network.target
+
+[Service]
+User=%i
+ExecStart=/home/%i/desk-display/monitor.sh
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
