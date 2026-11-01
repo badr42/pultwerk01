@@ -34,6 +34,7 @@ from zoneinfo import ZoneInfo
 from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont, ImageOps, features
 
 from settings import GAUGE_METRICS, SCREENS, Settings, _merge as merge_settings
+from wifi_setup import HOTSPOT_IP, WifiSetup
 
 HERE = Path(__file__).resolve().parent
 DATA = HERE.parent.parent if HERE.parent.name == "releases" else HERE   # config and settings outlive a release
@@ -757,6 +758,51 @@ def qr_matrix(text):
         return None
 
 
+def draw_qr(c, app, text):
+    """Draw a QR code in the upper middle of the screen; False if it could not be made."""
+    if app.qr[0] != text:
+        app.qr = (text, qr_matrix(text))
+    m = app.qr[1]
+    if not m:
+        return False
+    side = 144
+    mod = side / len(m)
+    x0, y0 = 180 - side / 2, 140 - side / 2
+    c.d.rounded_rectangle([(x0 - 9) * c.k, (y0 - 9) * c.k, (x0 + side + 9) * c.k, (y0 + side + 9) * c.k],
+                          radius=8 * c.k, fill=(242, 240, 233))
+    for r, row in enumerate(m):
+        for q, on in enumerate(row):
+            if on:
+                c.d.rectangle([(x0 + q * mod) * c.k, (y0 + r * mod) * c.k,
+                               (x0 + (q + 1) * mod) * c.k - 1, (y0 + (r + 1) * mod) * c.k - 1], fill=BG)
+    return True
+
+
+def slide_wifi(app, now=None, arg=None):
+    """Wi-Fi setup: join the hotspot, then open the page, then wait while it tries the network."""
+    c = Canvas()
+    w = app.wifi
+    v = w.view()
+    if v["stage"] == "joining":
+        c.text(180, 150, "CONNECTING", "Light", 14, DIM, track=4)
+        c.text(180, 190, (v["ssid"] or "SAVED WI-FI")[:22], "Light", 22, FG)
+        return c.image()
+    if v["stage"] == "open":
+        url = f"http://{HOTSPOT_IP}:{app.cfg.get('web', {}).get('port', 8080)}/wifi"
+        c.text(180, 42, "OPEN SETUP", "Regular", 12, ORANGE, track=3)
+        draw_qr(c, app, url)
+        c.text(180, 246, url.replace("http://", ""), "Light", 17, FG)
+        c.text(180, 272, "CHOOSE YOUR WI-FI ON THE PHONE", "Light", 10, DIM, track=1.5)
+        return c.image()
+    c.text(180, 42, "SCAN TO SET UP", "Regular", 12, ORANGE, track=3)
+    draw_qr(c, app, w.join_qr())
+    c.text(180, 246, w.hotspot_ssid, "Light", 17, FG)
+    c.text(180, 270, f"PASSWORD  {w.hotspot_password}", "Light", 13, DIM, track=1)
+    if v["error"]:
+        c.text(180, 298, "COULD NOT JOIN, TRY AGAIN", "Regular", 10, DOWN, track=1.5)
+    return c.image()
+
+
 def slide_system(app, now, arg=None):
     """Where to find the control page: a QR code to scan with the phone, the address, a few vitals."""
     c = Canvas()
@@ -764,22 +810,7 @@ def slide_system(app, now, arg=None):
         app.ip, app.ip_t = local_ip(), time.time()
     port = app.cfg.get("web", {}).get("port", 8080)
     url = f"http://{app.ip}:{port}" if app.ip else None
-    if url and app.qr[0] != url:
-        app.qr = (url, qr_matrix(url))
-    m = app.qr[1] if url else None
-    if m:
-        n = len(m)
-        side = 144
-        mod = side / n
-        x0, y0 = 180 - side / 2, 140 - side / 2
-        c.d.rounded_rectangle([(x0 - 9) * c.k, (y0 - 9) * c.k, (x0 + side + 9) * c.k, (y0 + side + 9) * c.k],
-                              radius=8 * c.k, fill=(242, 240, 233))
-        for r, row in enumerate(m):
-            for q, on in enumerate(row):
-                if on:
-                    c.d.rectangle([(x0 + q * mod) * c.k, (y0 + r * mod) * c.k,
-                                   (x0 + (q + 1) * mod) * c.k - 1, (y0 + (r + 1) * mod) * c.k - 1], fill=BG)
-    else:
+    if not (url and draw_qr(c, app, url)):
         c.text(180, 140, "NO NETWORK" if not url else url.replace("http://", ""), "Light", 16, DIM, track=3)
     c.text(180, 246, f"{app.ip}:{port}" if app.ip else "", "Light", 17, FG)
     c.text(180, 270, f"{socket.gethostname()}.local:{port}".upper(), "Light", 11, DIM, track=2)
@@ -1376,6 +1407,8 @@ class App:
         self.ip, self.ip_t, self.qr = None, 0.0, (None, None)
         self.offline = False                                     # demo mode: no network fetches
         self.boot_until = 0.0                                    # System screen (QR to the web page) after start-up
+        self.wifi = None                                         # WifiSetup: the hotspot takes over the screen
+        self.joined_until = 0.0                                  # monotonic: keep the QR up after joining a network
         self.lock = threading.Lock()
         self.rebuild_slides()
 
@@ -1464,6 +1497,8 @@ class App:
             return
 
     def render(self, now):
+        if self.wifi and self.wifi.active:
+            return slide_wifi(self)
         if self.radar:
             return slide_radar(self, now)
         if self.boot_until:
@@ -1489,7 +1524,7 @@ class App:
 
     def handle(self, ev, now):
         if self.boot_until and ev in ("A_short", "B", "prev") or str(ev).startswith("show:"):
-            self.boot_until = 0
+            self.boot_until = self.joined_until = 0
         if ev == "sleep":
             if not self.effective_asleep(now):
                 self.toggle_sleep(now)
@@ -1611,6 +1646,8 @@ class App:
         elif name == "refresh":
             with self.data.lock:
                 self.data.kick.update({"quotes", "weather", "aqi"})
+        elif name == "wifi_setup":
+            return bool(self.wifi and self.wifi.request_setup())
         else:
             return False
         return True
@@ -1660,7 +1697,13 @@ class App:
                         changed |= self.handle(self.events.get_nowait(), now)
                     except queue.Empty:
                         break
-                asleep = self.effective_asleep(now)
+                if self.wifi and self.wifi.take_connected():
+                    self.action("refresh")
+                    self.ip_t, self.joined_until = 0.0, time.monotonic() + 180
+                    changed = True
+                if time.monotonic() < self.joined_until:             # the clock may jump now, so not boot_until alone
+                    self.boot_until = time.time() + 5
+                asleep = self.effective_asleep(now) and not (self.wifi and self.wifi.active)
                 if asleep != self.asleep:
                     self.asleep = asleep
                     self.screen.on(not asleep)
@@ -1848,6 +1891,9 @@ def main():
     except Exception as e:
         print(f"[light] disabled: {e!r}", flush=True)
     app = App(cfg, settings, screen, events, gauge=gauge, sound=Sound(cfg), light=light)
+    app.wifi = WifiSetup(cfg)
+    if app.wifi.enabled:
+        threading.Thread(target=app.wifi.run, daemon=True).start()
     if cfg.get("web", {}).get("enabled", True):
         from web import serve
         threading.Thread(target=serve, args=(app,), daemon=True).start()

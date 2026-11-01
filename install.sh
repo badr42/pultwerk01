@@ -36,7 +36,7 @@ chmod 755 "$DEST/update.sh"
 echo "== packages"
 sudo apt-get update -qq
 sudo apt-get install -y python3-gpiozero python3-lgpio python3-spidev python3-numpy python3-pil \
-  python3-smbus2 python3-qrcode libraqm0 alsa-utils i2c-tools curl
+  python3-smbus2 python3-qrcode libraqm0 alsa-utils i2c-tools curl network-manager dnsmasq-base
 [ -x "$HOME/.venvs/display/bin/python" ] || python3 -m venv --system-site-packages "$HOME/.venvs/display"
 "$HOME/.venvs/display/bin/pip" install -q -r "$SRC/requirements.txt"
 
@@ -52,6 +52,20 @@ for line in "dtparam=spi=on" "dtparam=i2c_arm=on" "dtparam=audio=off" "dtoverlay
   fi
 done
 sudo usermod -aG gpio,i2c,spi,audio "$USER" || true
+
+echo "== wi-fi setup"
+# the app runs as you and joins networks chosen on the setup page
+sudo tee /etc/polkit-1/rules.d/50-pultwerk-wifi.rules >/dev/null <<EOF
+polkit.addRule(function(action, subject) {
+  if (action.id.indexOf("org.freedesktop.NetworkManager.") === 0 && subject.user === "$USER") {
+    return polkit.Result.YES;
+  }
+});
+EOF
+# on the hotspot every name points at the Pi, which makes phones open the setup page
+sudo mkdir -p /etc/NetworkManager/dnsmasq-shared.d
+echo "address=/#/10.42.0.1" | sudo tee /etc/NetworkManager/dnsmasq-shared.d/pultwerk-captive.conf >/dev/null
+sudo rfkill unblock wifi || true
 
 echo "== service"
 sudo cp "$SRC/desk-display.service" "/etc/systemd/system/desk-display@.service"

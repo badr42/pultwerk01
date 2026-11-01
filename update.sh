@@ -94,7 +94,7 @@ prepare() {
   mkdir -p "$INCOMING"
   curl -fsSL --max-time 300 "https://github.com/$REPO/archive/$sha.tar.gz" \
     | tar xz --strip-components=1 -C "$INCOMING" || { log "download failed"; return 1; }
-  for f in desk_display.py settings.py web.py web_ui.html config.example.toml fonts; do
+  for f in desk_display.py settings.py web.py web_ui.html wifi_setup.py wifi_ui.html config.example.toml fonts; do
     [ -e "$INCOMING/$f" ] || { log "$name has no $f"; return 2; }
   done
   "$VENV/bin/python" -m py_compile "$INCOMING"/*.py || { log "$name does not compile"; return 2; }

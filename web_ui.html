@@ -234,6 +234,11 @@ footer{color:var(--faint);font-size:12px;text-align:center;padding:30px 0 calc(4
       <p class="hint" style="margin-top:10px">Prayer times, weather, sun, moon and radar use this. Change it in config.toml on the Pi.</p>
       <div class="btns"><button class="btn" id="refresh">Refresh prices and weather now</button></div>
     </section>
+    <section style="padding-top:22px">
+      <h2>Wi-Fi</h2>
+      <p class="hint">Moved the display or changed your Wi-Fi? This disconnects it and shows a setup code on its screen. Left unused, it goes back to the saved network within about 5 minutes.</p>
+      <div class="btns"><button class="btn" id="wifiSetup">Change Wi-Fi network</button></div>
+    </section>
   </section>
 </main>
 <footer id="foot">Pultwerk01</footer>
@@ -557,6 +562,9 @@ async function start() {
   $("#cdLabel").onchange = e => save({countdown: {label: e.target.value.toUpperCase()}}, 0);
   $("#cdDate").onchange = e => e.target.value && save({countdown: {date: e.target.value}}, 0);
   $("#refresh").onclick = () => { act("refresh"); toast("Fetching…"); };
+  $("#wifiSetup").onclick = () => {
+    if (confirm("Disconnect the display from Wi-Fi and show a setup code on its screen?")) act("wifi_setup");
+  };
   loadPhotos(); poll(); setInterval(poll, 2000);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) poll(); });
   window.addEventListener("pagehide", flush);

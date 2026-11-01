@@ -14,12 +14,20 @@ Standard library only (no Flask): a threaded HTTP server with a small JSON API a
     DELETE /api/photos?name=     delete a photo
 
 Set [web] password = "..." in config.toml to require it (HTTP basic auth, user name ignored).
+
+While the Wi-Fi setup hotspot is up (wifi_setup.py) only these answer, with no password since joining the
+hotspot takes the code on the screen. Anything else redirects to /wifi, which makes phones open the page.
+
+    GET  /wifi                   the setup page (wifi_ui.html)
+    GET  /api/wifi               setup state and nearby networks
+    POST /api/wifi               {"ssid": ..., "password": ...}: try that network
 """
 import base64
 import hmac
 import io
 import json
 import re
+import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -27,7 +35,10 @@ from urllib.parse import parse_qs, urlparse
 
 from PIL import Image, ImageOps
 
+from wifi_setup import HOTSPOT_IP
+
 HERE = Path(__file__).resolve().parent
+CAPTIVE_PORT = 80                               # phones check this port to find a sign-in page
 MAX_UPLOAD = 30 * 1024 * 1024
 NAME_OK = re.compile(r"[^A-Za-z0-9._ -]+")
 
@@ -109,9 +120,43 @@ class Handler(BaseHTTPRequestHandler):
     def folder(self):
         return self.app.photos.folder
 
+    # -- Wi-Fi setup
+    @property
+    def wifi(self):
+        w = self.app.wifi
+        return w if w and w.active else None
+
+    def _closed(self):
+        """The captive-portal port only answers during Wi-Fi setup."""
+        if self.server.server_port == CAPTIVE_PORT and self.app.cfg.get("web", {}).get("port", 8080) != CAPTIVE_PORT:
+            self._send(404, {"error": "not found"})
+            return True
+        return False
+
+    def _wifi_get(self, path):
+        if path == "/wifi":
+            self.wifi.page_seen()
+            return self._send(200, (HERE / "wifi_ui.html").read_bytes(), "text/html; charset=utf-8")
+        if path == "/api/wifi":
+            self.wifi.page_seen()
+            return self._send(200, self.wifi.view())
+        self._send(302, extra={"Location": f"http://{HOTSPOT_IP}:{self.server.server_port}/wifi"})
+
+    def _wifi_post(self, path):
+        if path != "/api/wifi":
+            return self._send(404, {"error": "not found"})
+        try:
+            a = self._json()
+            err = self.wifi.request_join(a.get("ssid"), a.get("password"))
+        except (ValueError, AttributeError):
+            err = "Could not read that."
+        self._send(400 if err else 200, {"error": err} if err else {"ok": True})
+
     # -- routes
     def do_GET(self):
-        if not self._authorised():
+        if self.wifi:
+            return self._wifi_get(urlparse(self.path).path)
+        if self._closed() or not self._authorised():
             return
         u = urlparse(self.path)
         q = parse_qs(u.query)
@@ -146,7 +191,9 @@ class Handler(BaseHTTPRequestHandler):
     do_HEAD = do_GET
 
     def do_POST(self):
-        if not self._authorised():
+        if self.wifi:
+            return self._wifi_post(urlparse(self.path).path)
+        if self._closed() or not self._authorised():
             return
         u = urlparse(self.path)
         q = parse_qs(u.query)
@@ -189,7 +236,9 @@ class Handler(BaseHTTPRequestHandler):
             self._send(500, {"error": str(e)})
 
     def do_DELETE(self):
-        if not self._authorised():
+        if self.wifi:
+            return self._send(404, {"error": "not found"})
+        if self._closed() or not self._authorised():
             return
         u = urlparse(self.path)
         q = parse_qs(u.query)
@@ -224,14 +273,10 @@ class Handler(BaseHTTPRequestHandler):
         return buf.getvalue()
 
 
-def serve(app):
-    w = app.cfg.get("web", {})
-    Handler.app = app
-    Handler.password = str(w.get("password", "") or "")
-    port = int(w.get("port", 8080))
-    for attempt in range(30):                   # the port can still be held for a moment after a restart
+def listen(bind, port, tries):
+    for attempt in range(tries):                # the port can still be held for a moment after a restart
         try:
-            srv = ThreadingHTTPServer((w.get("bind", "0.0.0.0"), port), Handler)
+            srv = ThreadingHTTPServer((bind, port), Handler)
             break
         except OSError as e:
             print(f"[web] port {port}: {e!r}; retrying", flush=True)
@@ -239,5 +284,15 @@ def serve(app):
     else:
         return
     srv.daemon_threads = True
-    print(f"[web] control page on port {port}", flush=True)
+    print(f"[web] listening on port {port}", flush=True)
     srv.serve_forever()
+
+
+def serve(app):
+    w = app.cfg.get("web", {})
+    Handler.app = app
+    Handler.password = str(w.get("password", "") or "")
+    port = int(w.get("port", 8080))
+    if app.wifi and app.wifi.enabled and port != CAPTIVE_PORT:   # without this port the QR code still works
+        threading.Thread(target=listen, args=(w.get("bind", "0.0.0.0"), CAPTIVE_PORT, 3), daemon=True).start()
+    listen(w.get("bind", "0.0.0.0"), port, 30)

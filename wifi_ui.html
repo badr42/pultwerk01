@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Pultwerk Wi-Fi</title>
+<style>
+:root{
+  --bg:#efebe2; --card:#faf8f3; --line:#dcd6c9; --ink:#1d1c1a; --mute:#7a756c;
+  --accent:#e8590c; --accent-ink:#fff; --r:14px;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#141413; --card:#1d1d1b; --line:#33322e; --ink:#eeebe4; --mute:#97928a;
+  color-scheme:dark;
+}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-size:15px;line-height:1.4}
+button,input{font:inherit;color:inherit}
+.wrap{max-width:460px;margin:0 auto;padding:calc(22px + env(safe-area-inset-top)) 16px 32px}
+.brand{font-size:11px;letter-spacing:.32em;font-weight:600;color:var(--mute);text-align:center}
+h1{font-size:22px;font-weight:600;margin:14px 0 4px;text-align:center}
+.hint{font-size:13px;color:var(--mute);margin:0 2px 14px;text-align:center}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.net{display:flex;align-items:center;gap:10px;width:100%;min-height:52px;padding:10px 14px;background:none;border:0;
+  border-top:1px solid var(--line);text-align:left;cursor:pointer}
+.net:first-child{border-top:0}
+.net .name{flex:1;min-width:0;overflow-wrap:anywhere}
+.net .meta{font-size:12px;color:var(--mute);flex:none}
+.net.on{background:color-mix(in srgb,var(--accent) 14%,transparent)}
+label{display:block;font-size:13px;color:var(--mute);margin:16px 2px 6px}
+input[type=text],input[type=password]{width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--card);font-size:16px}
+.show{display:flex;align-items:center;gap:8px;margin:10px 2px 0;font-size:13px;color:var(--mute)}
+.go{width:100%;margin-top:18px;padding:14px;border:0;border-radius:12px;background:var(--accent);color:var(--accent-ink);font-weight:600;cursor:pointer}
+.go:disabled{opacity:.5}
+.link{display:block;margin:14px auto 0;background:none;border:0;color:var(--mute);font-size:13px;text-decoration:underline;cursor:pointer}
+.err{margin:0 0 14px;padding:10px 14px;border-radius:12px;background:color-mix(in srgb,#e03131 16%,transparent);overflow-wrap:anywhere}
+.hide{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">PULTWERK</div>
+
+  <div id="form-view">
+    <h1>Connect to Wi-Fi</h1>
+    <p class="hint">Choose the network Pultwerk should use. Only 2.4 GHz networks appear.</p>
+    <p class="err hide" id="err"></p>
+    <div class="card" id="nets"></div>
+    <div class="hide" id="other-box">
+      <label for="ssid">Network name</label>
+      <input type="text" id="ssid" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="32">
+    </div>
+    <button class="link" id="other" type="button">Network not listed?</button>
+    <label for="pw">Password <span id="open-note"></span></label>
+    <input type="password" id="pw" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="63">
+    <div class="show"><input type="checkbox" id="showpw"><span>Show password</span></div>
+    <button class="go" id="go" type="button" disabled>Connect</button>
+  </div>
+
+  <div class="hide" id="wait-view">
+    <h1 id="wait-title">Connecting…</h1>
+    <p class="hint">Your phone will leave the setup network now. Watch the round screen:</p>
+    <div class="card">
+      <div class="net"><span class="name">A new code means it worked. Go back to your usual Wi-Fi and scan it to open the control page.</span></div>
+      <div class="net"><span class="name">The setup code again means it did not join. Reconnect to the setup network to try again.</span></div>
+    </div>
+  </div>
+</div>
+<script>
+const $ = s => document.querySelector(s);
+let chosen = null, typed = false, waiting = false, drawn = "";
+
+function bars(signal) { return signal > 66 ? "strong" : signal > 33 ? "good" : "weak"; }
+
+function draw(networks) {
+  const key = JSON.stringify(networks.map(n => [n.ssid, bars(n.signal)]));
+  if (key === drawn) return;
+  drawn = key;
+  const box = $("#nets");
+  box.replaceChildren();
+  box.classList.toggle("hide", !networks.length);
+  if (!networks.length) { setTyped(true); return; }
+  for (const n of networks) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "net" + (!typed && chosen && chosen.ssid === n.ssid ? " on" : "");
+    const name = document.createElement("span");
+    name.className = "name";
+    name.textContent = n.ssid;
+    const meta = document.createElement("span");
+    meta.className = "meta";
+    meta.textContent = (n.security ? "" : "open · ") + bars(n.signal);
+    b.append(name, meta);
+    b.onclick = () => {
+      setTyped(false);
+      chosen = n;
+      drawn = "";
+      draw(networks);
+      refresh();
+      $("#pw").focus();
+    };
+    box.append(b);
+  }
+}
+
+function setTyped(on) {
+  typed = on;
+  if (on) { chosen = null; document.querySelectorAll(".net.on").forEach(e => e.classList.remove("on")); }
+  $("#other-box").classList.toggle("hide", !on);
+  refresh();
+}
+
+function current() { return typed ? $("#ssid").value.trim() : chosen ? chosen.ssid : ""; }
+
+function refresh() {
+  const open = !typed && chosen && !chosen.security;
+  $("#open-note").textContent = open ? "(this network has none)" : "";
+  $("#pw").disabled = !!open;
+  if (open) $("#pw").value = "";
+  $("#go").disabled = !current() || (!open && !typed && !$("#pw").value);
+}
+
+function wait(ssid) {
+  waiting = true;
+  $("#form-view").classList.add("hide");
+  $("#wait-view").classList.remove("hide");
+  $("#wait-title").textContent = ssid ? "Connecting to " + ssid + "…" : "Connecting…";
+}
+
+function showForm(error) {
+  waiting = false;
+  $("#wait-view").classList.add("hide");
+  $("#form-view").classList.remove("hide");
+  $("#err").textContent = error || "";
+  $("#err").classList.toggle("hide", !error);
+}
+
+async function poll() {
+  try {
+    const v = await (await fetch("/api/wifi", {cache: "no-store"})).json();
+    if (v.stage === "joining") wait(v.ssid);
+    else {
+      if (waiting || v.error) showForm(v.error);
+      draw(v.networks);
+    }
+  } catch (e) { /* the hotspot is down while it tries the network */ }
+}
+
+$("#other").onclick = () => { setTyped(!typed); if (typed) $("#ssid").focus(); };
+$("#ssid").oninput = refresh;
+$("#pw").oninput = refresh;
+$("#showpw").onchange = e => { $("#pw").type = e.target.checked ? "text" : "password"; };
+$("#go").onclick = async () => {
+  const ssid = current();
+  $("#go").disabled = true;
+  try {
+    const r = await fetch("/api/wifi", {method: "POST", headers: {"Content-Type": "application/json"},
+                                        body: JSON.stringify({ssid, password: $("#pw").value})});
+    const a = await r.json();
+    if (r.ok) wait(ssid);
+    else showForm(a.error);
+  } catch (e) {
+    showForm("Lost the connection to Pultwerk. Check your phone is still on the setup network.");
+  }
+  refresh();
+};
+poll();
+setInterval(poll, 2000);
+</script>
+</body>
+</html>

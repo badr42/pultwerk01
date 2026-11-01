@@ -28,6 +28,13 @@ port = 8080
 bind = "0.0.0.0"                   # reachable from your phone on the same Wi-Fi
 password = ""                      # set one to make the page ask for it (any user name)
 
+[wifi]
+setup_hotspot = true               # no network to join: open a hotspot and show a QR code to set up from a phone
+hotspot_name = "Pultwerk-Setup"
+wait_new_seconds = 5               # no saved network: how long to wait before opening the hotspot
+wait_saved_seconds = 180           # saved network not reachable: it may just be restarting
+retry_saved_seconds = 300          # while the hotspot is up and unused, how often to try saved networks again
+
 [display]
 rotation = 0
 # pins (BCM). 18/19/21 are the I2S amp, so the backlight moved to GPIO 12 (hardware PWM0).

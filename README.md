@@ -14,6 +14,32 @@ sudo reboot                # only if the installer says interfaces changed
 
 The installer sets up `~/desk-display`, installs the packages, switches on SPI (screen), I²C (light sensor) and I²S (amp), and starts the `desk-display@<you>` service and the update timer. Your `config.toml`, `settings.json` and photos are kept. Code from an older install is moved to `releases/pre-update-<date>`.
 
+## Wi-Fi setup
+
+A Pultwerk with no network to join sets itself up from a phone:
+
+1. It opens a hotspot called `Pultwerk-Setup` and shows a QR code. Scan it to join; the name and password are also on the screen.
+2. Most phones then open the setup page by themselves. If yours doesn't, the screen shows a second QR code to it (`http://10.42.0.1:8080/wifi`).
+3. Pick your network and enter its password. Only 2.4 GHz networks work on the Zero 2 W.
+4. On success the screen shows the QR code to the control page for 3 minutes. Put your phone back on your usual Wi-Fi to use it. On failure the hotspot comes back and the page shows what went wrong.
+
+With no saved network the hotspot opens within seconds. If a saved network can't be reached, it waits 3 minutes, then opens the hotspot and tries the saved network again every 5 minutes while nobody is using it, so a router restart sorts itself out. To change networks while connected: **More → Change Wi-Fi network** on the control page. The timings are under `[wifi]` in `config.toml`.
+
+### Making cards for new units
+
+The setup has to be on the card already, because a new Pi can't download anything until it has Wi-Fi. Make one master card and copy it:
+
+1. Flash Raspberry Pi OS Lite (64-bit) with Imager, install Pultwerk as above, and set the Wi-Fi country you are building for (`sudo raspi-config nonint do_wifi_country SA`).
+2. Run `bash ~/desk-display/current/prepare-image.sh`. It wipes your networks, settings, photos and SSH keys, then shuts the Pi down.
+3. On your computer, copy the card to an image, and flash that image to each new card. On a Mac, with `N` from `diskutil list`:
+
+```
+diskutil unmountDisk /dev/diskN
+sudo dd if=/dev/rdiskN of=pultwerk.img bs=4m
+```
+
+Every copy has the same login, so change the password on the master before step 2. New cards must be at least as large as the master, so build the master on the smallest card you plan to use.
+
 ## Updates
 
 The Pi checks the `stable` branch about once an hour and installs anything new by itself, so you decide when a version goes out by moving that branch (on your computer):
@@ -100,4 +126,4 @@ Stop the service first for the hardware tests: `sudo systemctl stop desk-display
 
 ## Files
 
-`desk_display.py` display, gauge, sound, sensors · `settings.py` everything the page can change (saved in `settings.json`) · `web.py` + `web_ui.html` the control page (standard library only) · `config.example.toml` template for the Pi's `config.toml` (hardware and location) · `update.sh`, `desk-update.service`, `desk-update.timer` automatic updates · `fonts/` Inter and Noto Kufi Arabic (both SIL Open Font License).
+`desk_display.py` display, gauge, sound, sensors · `settings.py` everything the page can change (saved in `settings.json`) · `web.py` + `web_ui.html` the control page (standard library only) · `wifi_setup.py` + `wifi_ui.html` Wi-Fi setup hotspot · `prepare-image.sh` readies a master card · `config.example.toml` template for the Pi's `config.toml` (hardware and location) · `update.sh`, `desk-update.service`, `desk-update.timer` automatic updates · `fonts/` Inter and Noto Kufi Arabic (both SIL Open Font License).
