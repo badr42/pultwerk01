@@ -145,7 +145,7 @@ footer{color:var(--faint);font-size:12px;text-align:center;padding:30px 0 calc(4
 </header>
 
 <nav><div class="wrap" id="tabs">
-  <a href="#screens">Screens</a><a href="#display">Display</a><a href="#gauge">Gauge</a><a href="#radar">Radar</a><a href="#sound">Sound</a>
+  <a href="#screens">Screens</a><a href="#display">Display</a><a href="#gauge">Gauge</a><a href="#radar">Radar</a><a href="#retro">Retro</a><a href="#sound">Sound</a>
   <a href="#tickers">Tickers</a><a href="#photos">Photos</a><a href="#more">More</a>
 </div></nav>
 
@@ -174,6 +174,11 @@ footer{color:var(--faint);font-size:12px;text-align:center;padding:30px 0 calc(4
       <div class="row"><div class="grow"><div class="name">24-hour clock</div></div><label class="sw"><input type="checkbox" id="clock24"><span></span></label></div>
       <div class="row"><div class="grow"><div class="name">Start-up QR code</div><div class="desc">Show the address of this page for 20 s after the display starts</div></div>
         <label class="sw"><input type="checkbox" id="bootInfo"><span></span></label></div>
+      <div class="row"><div class="grow"><div class="name">Retro start-up</div><div class="desc">Old TV switching on, start-up checks, then the logo with a chiptune</div></div>
+        <button class="btn" style="padding:7px 12px" id="bootPlay">Play</button>
+        <label class="sw"><input type="checkbox" id="bootAnim"><span></span></label></div>
+      <div class="row"><div class="grow"><div class="name">Announcements show their screen</div><div class="desc">The hour, a prayer time or a price move brings up its screen for 15 s. Waits if you used the display in the last minute.</div></div>
+        <label class="sw"><input type="checkbox" id="announce"><span></span></label></div>
     </div>
   </section>
 
@@ -200,6 +205,17 @@ footer{color:var(--faint);font-size:12px;text-align:center;padding:30px 0 calc(4
         <select id="radarRange" aria-label="Radar range"></select></div>
     </div>
     <div class="btns"><button class="btn" id="radarShow">Show the radar</button></div>
+  </section>
+
+  <section id="retro">
+    <h2>Retro</h2>
+    <p class="hint">The Retro animations screen plays one of the ticked animations each time it comes round. Switch it on under Screens to add it to the rotation.</p>
+    <div class="card">
+      <div class="row"><div class="grow"><div class="name">CRT look</div><div class="desc">Scanlines and a darker rim, like an old tube</div></div>
+        <label class="sw"><input type="checkbox" id="retroCrt"><span></span></label></div>
+    </div>
+    <div class="card" style="margin-top:12px" id="retroList"></div>
+    <div class="btns"><button class="btn" id="retroAny">Play a random one</button></div>
   </section>
 
   <section id="sound">
@@ -368,6 +384,7 @@ function renderDisplay() {
   $("#night").checked = d.night_enabled; $("#nightBox").style.display = d.night_enabled ? "" : "none";
   $("#sleepAt").value = d.sleep_at; $("#wakeAt").value = d.wake_at;
   $("#clock24").checked = d.clock_24h; $("#bootInfo").checked = d.boot_info;
+  $("#bootAnim").checked = d.boot_animation; $("#announce").checked = d.announce_screens;
 }
 function wireDisplay() {
   $("#autoBright").onchange = e => { save({display: {auto_brightness: e.target.checked}}); renderDisplay(); };
@@ -383,6 +400,32 @@ function wireDisplay() {
   $("#wakeAt").onchange = e => e.target.value && save({display: {wake_at: e.target.value}});
   $("#clock24").onchange = e => save({display: {clock_24h: e.target.checked}});
   $("#bootInfo").onchange = e => save({display: {boot_info: e.target.checked}});
+  $("#bootAnim").onchange = e => save({display: {boot_animation: e.target.checked}});
+  $("#announce").onchange = e => save({display: {announce_screens: e.target.checked}});
+  $("#bootPlay").onclick = () => { act("boot"); toast("Playing the start-up"); };
+}
+
+/* ---------- retro ---------- */
+function renderRetro() {
+  $("#retroCrt").checked = S.retro.crt;
+  const box = $("#retroList"); box.replaceChildren();
+  for (const a of CAT.retro_animations) {
+    const on = S.retro.animations.includes(a.id);
+    box.append(h("div", {class: "row" + (on ? "" : " off")},
+      h("label", {class: "sw"}, h("input", {type: "checkbox", checked: on, "aria-label": "Use " + a.name,
+        onchange: e => {
+          const list = CAT.retro_animations.map(x => x.id)
+            .filter(id => id === a.id ? e.target.checked : S.retro.animations.includes(id));
+          if (!list.length) { e.target.checked = true; return toast("Keep at least one"); }
+          save({retro: {animations: list}}); renderRetro();
+        }}), h("span")),
+      h("div", {class: "grow"}, h("div", {class: "name"}, a.name), h("div", {class: "desc"}, a.desc)),
+      h("button", {class: "btn", style: "padding:7px 12px", onclick: () => { act("retro", a.id); toast("Playing " + a.name); }}, "Play")));
+  }
+}
+function wireRetro() {
+  $("#retroCrt").onchange = e => save({retro: {crt: e.target.checked}});
+  $("#retroAny").onclick = () => { act("retro", ""); toast("Playing a retro animation"); };
 }
 
 /* ---------- gauge ---------- */
@@ -596,13 +639,13 @@ async function poll() {
 }
 
 /* ---------- start ---------- */
-function renderAll() { renderScreens(); renderDisplay(); renderGauge(); renderRadar(); renderSound(); draft = S.tickers.map(t => ({...t})); renderTickers(); renderMore(); }
+function renderAll() { renderScreens(); renderDisplay(); renderGauge(); renderRadar(); renderRetro(); renderSound(); draft = S.tickers.map(t => ({...t})); renderTickers(); renderMore(); }
 async function start() {
   try {
     const st = await api("/api/state");
     S = st.settings; CAT = st.catalogue; ST = st.status; LOC = st.location || {}; RADAR_NM = st.radar_default_nm || 20;
   } catch (e) { $("#now").textContent = "Display not reachable: " + e.message; return; }
-  renderAll(); wireDisplay(); wireRadar(); wireSound();
+  renderAll(); wireDisplay(); wireRadar(); wireRetro(); wireSound();
   document.querySelectorAll("[data-act]").forEach(b => b.onclick = () => act(b.dataset.act));
   $("#dialLight").onchange = e => save({gauge: {backlight: e.target.checked}});
   $("#sweep").onclick = () => act("gauge_test");

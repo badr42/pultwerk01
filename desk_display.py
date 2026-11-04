@@ -31,9 +31,11 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import numpy as np
 from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont, ImageOps, features
 
-from settings import GAUGE_METRICS, SCREENS, Settings, _merge as merge_settings
+import retro
+from settings import GAUGE_METRICS, RETRO_ANIMATIONS, SCREENS, Settings, _merge as merge_settings
 from wifi_setup import HOTSPOT_IP, WifiSetup
 
 HERE = Path(__file__).resolve().parent
@@ -929,7 +931,17 @@ def prayer_events(app):
 
 
 def slide_prayer(app, now, arg=None):
+    """Countdown to the next prayer; with a prayer's name as arg (its time has come), that prayer now."""
     ev = prayer_events(app)
+    if isinstance(arg, str):
+        due = max((e for e in ev if e[1] == arg and e[0] <= now), default=None, key=lambda e: e[0])
+        if due:
+            c = Canvas()
+            c.arc(180, 180, 167, 0, 360, ORANGE, 1.6)
+            c.text(180, 116, "PRAYER TIME", "Light", 13, DIM, track=6)
+            c.text(180, 180, arg.upper(), "Thin", fit_text(c, arg.upper(), "Thin", 72, 290))
+            c.text(180, 250, due[0].strftime("%H:%M"), "Light", 22, FG)
+            return c.image()
     nxt = next(((dt, n) for dt, n in ev if dt > now), None)
     if not nxt:
         return placeholder()
@@ -1113,11 +1125,55 @@ def slide_radar(app, now, arg=None):
     return c.image()
 
 
+def boot_title():
+    """PULTWERK BIOS and the first letters of the running release."""
+    name = HERE.name if HERE.parent.name == "releases" else "DEV"
+    return f"PULTWERK BIOS {'LOCAL' if name.startswith('install') else name[:6]}"
+
+
+def post_checks(app):
+    """Lines for the start-up check, each (label, fn) with fn() -> (text, ok). They read the live state."""
+    def memory():
+        try:
+            kb = next(int(l.split()[1]) for l in open("/proc/meminfo") if l.startswith("MemTotal"))
+            return f"{kb // 1024}MB", True
+        except Exception:
+            return "OK", True
+
+    def light():
+        if not app.light:
+            return "NONE", True
+        if app.lux is not None:
+            return f"{app.lux:.0f} LX", True
+        return ("FAIL", False) if app.light_failed else ("WAIT", True)
+
+    def sound():
+        if not (app.sound and app.sound.enabled):
+            return "NONE", False
+        return ("MUTED", True) if app.st["sound"]["muted"] else ("OK", True)
+
+    def network():
+        if app.wifi and app.wifi.active:
+            return "SETUP", False
+        ip = local_ip()
+        return (ip, True) if ip else ("NO LINK", False)
+
+    def clock():
+        now = datetime.now(app.tz)
+        return (now.strftime("%H:%M"), True) if now.year >= 2025 else ("NOT SET", False)
+
+    return [("MEMORY", memory), ("DISPLAY", lambda: (f"{S}X{S}", True)),
+            ("GAUGE", lambda: ("NONE", True) if isinstance(app.gauge, NullGauge) else ("OK", True)),
+            ("LIGHT", light), ("SOUND", sound), ("NETWORK", network), ("CLOCK", clock)]
+
+
 RENDERERS = {"photo": None, "clock": slide_clock, "date": slide_date, "hijri": slide_hijri, "arabic": slide_arabic,
              "occasions": slide_occasions, "price": slide_price, "weather": slide_weather, "forecast": slide_forecast,
              "uv": slide_uv, "wind": slide_wind, "aqi": slide_aqi, "sun": slide_sun, "moon": slide_moon,
              "prayer": slide_prayer, "worldclock": slide_worldclock, "countdown": slide_countdown,
-             "calendar": slide_calendar, "progress": slide_progress, "system": slide_system}
+             "calendar": slide_calendar, "progress": slide_progress, "system": slide_system, "retro": None}
+ANNOUNCE_SECONDS = 15                  # how long an announcement's screen stays up
+RETRO_FPS = 15                         # frame rate asked for while something moves; the Pi manages about 10-15
 
 
 # --------------------------------------------------------------------------- ambient light
@@ -1302,6 +1358,7 @@ class Sound:
         self.enabled = bool(self.cfg.get("enabled", True)) and shutil.which("aplay") is not None
         self.keep_open = bool(self.cfg.get("keep_open", True))
         self.pending = bytearray()                       # raw PCM waiting for the open aplay
+        self.cache = {}
         if not self.enabled:
             print("[sound] aplay not found or sound disabled; silent", flush=True)
         elif self.keep_open:
@@ -1339,18 +1396,23 @@ class Sound:
             time.sleep(2)
 
     def _tone(self, notes, vol):
-        """notes: list of (freq_hz, seconds, gap_seconds). Sine with a soft envelope."""
-        out = bytearray()
-        r = self.rate
-        for f, dur, gap in notes:
+        """notes: list of (freq_hz, seconds, gap_seconds[, voice]) with a soft envelope on each note.
+        voice "sine" (the default) is a soft sine; "chip" is a band-limited pulse wave, like old consoles."""
+        r, parts = self.rate, []
+        for f, dur, gap, *voice in notes:
             n = int(r * dur)
-            att, rel = int(r * 0.008), int(r * min(0.08, dur / 2))
-            for i in range(n):
-                env = min(1.0, i / att if att else 1.0, (n - i) / rel if rel else 1.0)
-                s = math.sin(2 * math.pi * f * i / r) * 0.8 + math.sin(4 * math.pi * f * i / r) * 0.15
-                out += struct.pack("<h", int(s * env * vol * 32000))
-            out += b"\0\0" * int(r * gap)
-        return bytes(out)
+            i = np.arange(n)
+            att, rel = max(1, int(r * 0.008)), max(1, int(r * min(0.08, dur / 2)))
+            env = np.minimum(1.0, np.minimum(i / att, (n - i) / rel))
+            ph = 2 * np.pi * f * i / r
+            if voice and voice[0] == "chip":                     # 25 % pulse, harmonics kept under Nyquist
+                s = sum(2 / (k * np.pi) * np.sin(k * np.pi * 0.25) * np.cos(k * ph)
+                        for k in range(1, min(10, int(r / 2 / f) + 1)))
+            else:
+                s = np.sin(ph) * 0.8 + np.sin(2 * ph) * 0.15
+            parts.append((s * env * vol * 32000).astype("<i2").tobytes())
+            parts.append(b"\0\0" * int(r * gap))
+        return b"".join(parts)
 
     def _wav(self, pcm):
         pad = b"\0\0" * int(self.rate * 0.06)                # 60 ms of silence each side hides the amp's start click
@@ -1365,14 +1427,22 @@ class Sound:
         "prayer": [(660, 0.22, 0.08), (880, 0.34, 0)],
         "price":  [(988, 0.10, 0.05), (1319, 0.10, 0.05), (988, 0.16, 0)],
         "plane":  [(1200, 0.03, 0.06), (1200, 0.03, 0)],
-        "boot":   [(523, 0.14, 0.04), (784, 0.22, 0)],
+        "boot":   [(392, 0.07, 0, "chip"), (523, 0.07, 0, "chip"), (659, 0.07, 0, "chip"), (784, 0.07, 0, "chip"),
+                   (1047, 0.08, 0.05, "chip"), (784, 0.07, 0, "chip"), (1047, 0.38, 0, "chip")],
     }
+
+    def pcm(self, event, volume):
+        """The event's sound as raw PCM, made once per volume."""
+        vol = (max(1, min(100, volume)) / 100) ** 1.6                   # perceptual-ish volume curve
+        key = (event, round(vol, 4))
+        if key not in self.cache:
+            self.cache[key] = self._tone(self.PATTERNS[event], vol)
+        return self.cache[key]
 
     def play(self, event, volume):
         if not self.enabled or event not in self.PATTERNS:
             return
-        vol = (max(1, min(100, volume)) / 100) ** 1.6                   # perceptual-ish volume curve
-        pcm = self._tone(self.PATTERNS[event], vol)
+        pcm = self.pcm(event, volume)
         if self.keep_open:
             with self.lock:
                 if len(self.pending) > self.MAX_WAITING_S * self.rate * 2:
@@ -1479,6 +1549,11 @@ class App:
         self.boot_until = 0.0                                    # System screen (QR to the web page) after start-up
         self.wifi = None                                         # WifiSetup: the hotspot takes over the screen
         self.joined_until = 0.0                                  # monotonic: keep the QR up after joining a network
+        self.boot_seq, self.boot_t0 = None, 0.0                  # retro.BootSequence while it plays
+        self.takeover = None                                     # a screen shown for a while outside the rotation
+        self.fade_next = False
+        self.last_input = 0.0                                    # a key or the web page; announcements hold back
+        self.anim, self.anim_key, self.anim_id, self.anim_t0 = None, None, None, 0.0
         self.lock = threading.Lock()
         self.rebuild_slides()
 
@@ -1504,6 +1579,7 @@ class App:
         old_tickers = [t["symbol"] for t in self.st["tickers"]]
         self.st = self.settings.get()
         self.st_version = self.settings.version
+        self.last_input = time.time()                            # someone is on the page: announcements wait
         if [t["symbol"] for t in self.st["tickers"]] != old_tickers:
             with self.data.lock:
                 self.data.kick.add("quotes")                     # fetch new tickers now, not in a minute
@@ -1568,13 +1644,24 @@ class App:
             return
 
     def render(self, now):
+        if self.boot_seq:
+            try:
+                return self.boot_seq.frame(time.monotonic() - self.boot_t0)
+            except Exception as e:                               # never let the start-up stop the display
+                print(f"[boot] {e!r}", flush=True)
+                self.boot_seq = None
+                self.slide_t = time.time()
         if self.wifi and self.wifi.active:
             return slide_wifi(self)
         if self.radar:
             return slide_radar(self, now)
         if self.boot_until:
             return slide_system(self, now)
+        if self.takeover:
+            return self.render_takeover(now)
         kind, arg, _ = self.slides[self.idx]
+        if kind == "retro":
+            return self.retro_frame(("slide", self.idx, self.slide_t))
         if kind == "photo":
             return self.photos.current or placeholder()
         fn = RENDERERS.get(kind)
@@ -1583,6 +1670,81 @@ class App:
         except Exception as e:
             print(f"[slide {kind}] {e!r}", flush=True)
             return placeholder()
+
+    def render_takeover(self, now):
+        tk = self.takeover
+        if tk["kind"] == "retro":
+            return self.retro_frame(("takeover", tk["t0"]), tk["arg"])
+        fn = RENDERERS.get(tk["kind"])
+        try:
+            im = fn(self, now, tk["arg"])
+        except Exception as e:
+            print(f"[takeover {tk['kind']}] {e!r}", flush=True)
+            return placeholder()
+        return retro.power_on(im, time.time() - tk["t0"]) if tk.get("flourish") else im
+
+    def retro_frame(self, key, want=None):
+        """The current retro animation; a new key (a new turn of the slide) picks a new one."""
+        if key != self.anim_key:
+            pool = self.st["retro"]["animations"] or list(retro.ANIMATIONS)
+            if want not in retro.ANIMATIONS:
+                others = [a for a in pool if a != self.anim_id]
+                want = random.choice(others or pool)
+            self.anim, self.anim_key, self.anim_id, self.anim_t0 = retro.make(want), key, want, time.monotonic()
+        try:
+            im = self.anim.frame(time.monotonic() - self.anim_t0)
+        except Exception as e:
+            print(f"[retro {self.anim_id}] {e!r}", flush=True)
+            return placeholder()
+        return retro.crt(im) if self.st["retro"].get("crt", True) else im
+
+    def animating(self):
+        """True while the screen needs fast frames."""
+        if self.boot_seq:
+            return True
+        if self.radar or self.boot_until or (self.wifi and self.wifi.active):
+            return False
+        if self.takeover:
+            return self.takeover["kind"] == "retro" or (self.takeover.get("flourish") and time.time() - self.takeover["t0"] < 1)
+        return self.slides[self.idx][0] == "retro"
+
+    def show_for(self, kind, arg, seconds, flourish=False):
+        self.takeover = {"kind": kind, "arg": arg, "t0": time.time(), "until": time.time() + seconds, "flourish": flourish}
+        self.fade_next = not flourish
+
+    def announce(self, event, kind, arg=None, now=None, flourish=False):
+        """An event's sound, and its screen for a while when that is switched on and nobody is using the display."""
+        if not self.st["sound"]["events"].get(event):
+            return
+        self.beep(event, now)
+        if (not self.st["display"].get("announce_screens", True) or self.radar or self.boot_seq or self.boot_until
+                or (self.wifi and self.wifi.active) or time.time() - self.last_input < 60):
+            return
+        self.show_for(kind, arg, ANNOUNCE_SECONDS, flourish)
+
+    def start_boot(self):
+        self.boot_seq, self.boot_t0 = retro.BootSequence(boot_title(), post_checks(self)), time.monotonic()
+        if self.sound:
+            self.sound.pcm("boot", self.st["sound"]["volume"])          # made now, so the chime is not late
+
+    def boot_cues(self):
+        t = time.monotonic() - self.boot_t0
+        for cue in self.boot_seq.due(t):
+            if cue == "sweep":
+                self.gauge_t = time.time() + 10                          # keep tick_gauge off the needle meanwhile
+                def run():
+                    self.gauge.sweep()
+                    self.gauge_t = 0
+                threading.Thread(target=run, daemon=True).start()
+            elif cue == "chime":
+                self.beep("boot", force=not self.st["sound"]["muted"] and self.st["sound"]["events"].get("boot"))
+        if self.boot_seq.done(t):
+            self.boot_seq = None
+            if self.st["display"].get("boot_info", True):
+                self.boot_until = time.time() + 20
+            self.slide_t = time.time()
+            return True
+        return False
 
     def push(self, im, fade=False):
         if fade and self.last_img is not None:
@@ -1593,8 +1755,22 @@ class App:
         self.last_img = im
         self.last_crc = zlib.crc32(im.tobytes())
 
+    def end_takeover(self):
+        if self.takeover:
+            self.slide_t += time.time() - self.takeover["t0"]          # the rotation carries on where it was
+            self.takeover = None
+
     def handle(self, ev, now):
-        if self.boot_until and ev in ("A_short", "B", "prev") or str(ev).startswith("show:"):
+        ev = str(ev)
+        if ev in ("A_short", "B", "prev", "A_long") or ev.startswith(("show:", "retro:")):
+            self.last_input = time.time()
+        if self.boot_seq and (ev in ("A_short", "B", "prev") or ev.startswith(("show:", "retro:"))):
+            self.boot_seq = None                                       # a key or the page skips the start-up
+            self.slide_t = time.time()
+            self.gauge_t = 0
+            if not ev.startswith(("show:", "retro:")):
+                return True
+        if self.boot_until and ev in ("A_short", "B", "prev") or ev.startswith(("show:", "retro:")):
             self.boot_until = self.joined_until = 0
         if ev == "sleep":
             if not self.effective_asleep(now):
@@ -1608,8 +1784,24 @@ class App:
             if ev in ("A_short", "B", "A_long"):
                 self.toggle_sleep(now)
             return False
+        if ev == "boot":
+            self.end_takeover()
+            self.set_radar(False)
+            self.start_boot()
+            return True
+        if ev.startswith("retro:"):
+            self.set_radar(False)
+            self.end_takeover()
+            secs = next((sc["seconds"] for sc in self.st["screens"] if sc["id"] == "retro"), 20)
+            self.show_for("retro", ev[6:], secs)
+            self.anim_key = None
+            return True
         if ev == "A_long":
             self.toggle_sleep(now)
+        elif ev == "A_short" and self.takeover:                       # NEXT closes what an announcement put up
+            self.beep("key", now)
+            self.end_takeover()
+            return True
         elif ev == "A_short":
             self.beep("key", now)
             if self.radar:
@@ -1620,14 +1812,17 @@ class App:
             return True
         elif ev == "B":
             self.beep("key", now)
+            self.end_takeover()
             self.set_radar(not self.radar)
             return True
         elif ev == "prev":
+            self.end_takeover()
             if self.radar:
                 self.set_radar(False)
             self.advance(-1)
             return True
         elif ev.startswith("show:"):                              # jump to a slide (from the web page)
+            self.end_takeover()
             want = ev[5:]
             for i, sl in enumerate(self.slides):
                 if f"{sl[0]}:{sl[1]}" == want or sl[0] == want:
@@ -1685,7 +1880,7 @@ class App:
         # hourly tone
         if now.minute == 0 and self.last_hour != now.hour:
             self.last_hour = now.hour
-            self.beep("hour", now)
+            self.announce("hour", "clock", now=now, flourish=True)
         elif now.minute != 0:
             self.last_hour = None
         # prayer time
@@ -1693,17 +1888,17 @@ class App:
             key = dt.isoformat()
             if 0 <= (now - dt).total_seconds() < 90 and key not in self.prayer_done:
                 self.prayer_done.add(key)
-                self.beep("prayer", now)
+                self.announce("prayer", "prayer", name, now)
         # price move past the threshold (once per direction per ticker per day)
         thr = self.st["sound"].get("price_threshold_pct", 2.0)
-        for t in self.st["tickers"]:
+        for i, t in enumerate(self.st["tickers"]):
             q = self.data.quotes.get(t["symbol"])
             if q and q["prev"]:
                 chg = (q["price"] / q["prev"] - 1) * 100
                 tag = (t["symbol"], now.date().isoformat(), chg > 0)
                 if abs(chg) >= thr and tag not in self.price_alerted:
                     self.price_alerted[tag] = True
-                    self.beep("price", now)
+                    self.announce("price", "price", i, now)
         # aircraft entering the inner ring (only while the radar is up)
         if self.data.new_plane.is_set():
             self.data.new_plane.clear()
@@ -1716,6 +1911,10 @@ class App:
             self.events.put({"next": "A_short", "prev": "prev", "radar": "B", "toggle_sleep": "A_long"}.get(name, name))
         elif name == "show" and arg:
             self.events.put(f"show:{arg}")
+        elif name == "retro":
+            self.events.put(f"retro:{arg or ''}")
+        elif name == "boot":
+            self.events.put("boot")
         elif name == "sound_test" and self.sound:
             self.sound.play(str(arg), self.st["sound"]["volume"])
         elif name == "gauge_test":
@@ -1748,8 +1947,16 @@ class App:
             label = f"photo · {self.photos.current_name}"
         if self.ip is None or time.time() - self.ip_t > 60:
             self.ip, self.ip_t = local_ip(), time.time()
+        if kind == "retro":
+            label = f"retro · {self.anim_id}" if self.anim_id else "retro"
+        if self.takeover and not self.radar:
+            kind = label = self.takeover["kind"]
+            if kind == "retro":
+                label = f"retro · {self.anim_id}"
         if self.boot_until and not self.radar:
             kind = label = "system"
+        if self.boot_seq:
+            kind = label = "start-up"
         return {"slide": "radar" if self.radar else label, "slide_id": "radar" if self.radar else kind,
                 "radar": self.radar, "asleep": self.asleep, "ip": self.ip,
                 "lux": None if self.lux is None else round(self.lux, 1), "brightness": self.brightness,
@@ -1763,9 +1970,14 @@ class App:
         if not self.offline:
             threading.Thread(target=self.data.worker, daemon=True).start()
         self.advance()
-        if self.st["display"].get("boot_info", True):
-            self.boot_until = time.time() + 20
-        self.beep("boot", force=not self.st["sound"]["muted"] and self.st["sound"]["events"].get("boot"))
+        if self.effective_asleep(datetime.now(self.tz)):
+            pass                                                 # restarted at night (an update): stay dark and quiet
+        elif self.st["display"].get("boot_animation", True):
+            self.start_boot()                                    # its chime and the QR screen come at its end
+        else:
+            if self.st["display"].get("boot_info", True):
+                self.boot_until = time.time() + 20
+            self.beep("boot", force=not self.st["sound"]["muted"] and self.st["sound"]["events"].get("boot"))
         self.gauge.backlight(self.st["gauge"]["backlight"])
         try:
             while True:
@@ -1793,10 +2005,18 @@ class App:
                         self.last_crc = None
                 self.tick_gauge(now)
                 if asleep:
+                    self.boot_seq = self.takeover = None
                     time.sleep(0.15)
                     continue
+                if self.boot_seq:
+                    changed |= self.boot_cues()
                 self.tick_light()
                 self.tick_events(now)
+                changed |= self.fade_next
+                self.fade_next = False
+                if self.takeover and time.time() > self.takeover["until"]:
+                    self.end_takeover()
+                    changed = True
                 tmo = self.cfg["radar"].get("timeout_minutes", 0)
                 if self.radar and tmo and time.time() - self.radar_t > tmo * 60:
                     self.set_radar(False)
@@ -1804,7 +2024,8 @@ class App:
                 if self.boot_until and time.time() > self.boot_until:
                     self.boot_until, self.slide_t = 0, time.time()
                     changed = True
-                if not self.radar and not self.boot_until and time.time() - self.slide_t > self.slides[self.idx][2]:
+                if (not self.radar and not self.boot_until and not self.boot_seq and not self.takeover
+                        and time.time() - self.slide_t > self.slides[self.idx][2]):
                     self.advance()
                     changed = True
                 t0 = time.time()
@@ -1813,7 +2034,7 @@ class App:
                     self.push(im, fade=True)
                 elif zlib.crc32(im.tobytes()) != self.last_crc:
                     self.push(im)
-                period = 0.1 if self.radar else 0.5
+                period = 1 / RETRO_FPS if self.animating() else 0.1 if self.radar else 0.5
                 time.sleep(max(0.01, period - (time.time() - t0)))
         finally:
             self.data.stop.set()
@@ -1885,7 +2106,13 @@ def preview(cfg, settings, out):
         k = sc["id"]
         if k == "photo":
             continue
-        if k == "price":
+        if k == "retro":
+            for a in retro.ANIMATIONS:
+                anim = retro.make(a, 1)
+                for i in range(24):
+                    im = anim.frame(i / 12)
+                shots.append(save(f"retro-{a}", retro.crt(im)))
+        elif k == "price":
             for i, t in enumerate(app.st["tickers"]):
                 shots.append(save(f"price-{t['label'].lower()}", slide_price(app, now, i)))
         else:

@@ -33,7 +33,18 @@ SCREENS = [
     {"id": "aqi",        "group": "Weather & sky", "name": "Air quality",     "desc": "European AQI and PM2.5"},
     {"id": "sun",        "group": "Weather & sky", "name": "Sun",             "desc": "Sunrise, sunset, daylight left"},
     {"id": "moon",       "group": "Weather & sky", "name": "Moon",            "desc": "Phase and illumination"},
+    {"id": "retro",      "group": "Retro",         "name": "Retro animations","desc": "A random one from the Retro list"},
     {"id": "system",     "group": "System",        "name": "System",          "desc": "QR code to this page, address, CPU temperature"},
+]
+
+# The retro animation screen picks one of these at random (retro.py draws them).
+RETRO_ANIMATIONS = [
+    {"id": "scope",     "name": "Oscilloscope",     "desc": "Green Lissajous curves with a fading glow"},
+    {"id": "plasma",    "name": "Plasma",           "desc": "Flowing colours, demoscene style"},
+    {"id": "starfield", "name": "Starfield",        "desc": "Flying through stars"},
+    {"id": "rain",      "name": "Code rain",        "desc": "Falling green characters"},
+    {"id": "bounce",    "name": "Bouncing logo",    "desc": "Bounces off the round edge, new colour each time"},
+    {"id": "synthwave", "name": "Synthwave sunset", "desc": "Striped sun over a neon grid"},
 ]
 
 # What the needle can show. value_fn is resolved in desk_display.py; min/max map to the dial ends.
@@ -62,7 +73,7 @@ SOUND_EVENTS = [
     {"id": "prayer", "name": "Prayer time",                  "desc": "Two notes when a prayer time arrives"},
     {"id": "price",  "name": "Share price move",             "desc": "Chime when a ticker moves past the threshold"},
     {"id": "plane",  "name": "Aircraft overhead",            "desc": "Tick when a new aircraft enters the inner ring"},
-    {"id": "boot",   "name": "Start-up",                     "desc": "Rising two notes when the display starts"},
+    {"id": "boot",   "name": "Start-up",                     "desc": "A chiptune when the display starts, also in quiet hours"},
 ]
 
 DEFAULTS = {
@@ -87,6 +98,7 @@ DEFAULTS = {
         {"id": "worldclock", "enabled": False, "seconds": 10},
         {"id": "countdown",  "enabled": False, "seconds": 8},
         {"id": "progress",   "enabled": False, "seconds": 8},
+        {"id": "retro",      "enabled": False, "seconds": 20},
         {"id": "system",     "enabled": False, "seconds": 10},
     ],
     "tickers": [
@@ -103,6 +115,8 @@ DEFAULTS = {
         "sleep_at": "00:30",
         "wake_at": "06:30",
         "boot_info": True,         # show the System screen (QR code to this page) for 20 s after start-up
+        "boot_animation": True,    # the retro start-up sequence (retro.py) every time the app starts
+        "announce_screens": True,  # the hour, a prayer or a price move also brings up its screen for a while
     },
     "gauge": {
         "metric": "temp",
@@ -122,6 +136,10 @@ DEFAULTS = {
         {"name": "TOKYO",  "tz": "Asia/Tokyo"},
     ],
     "countdown": {"label": "HOLIDAY", "date": "2027-01-01"},
+    "retro": {
+        "animations": [a["id"] for a in RETRO_ANIMATIONS],   # the ones the screen may pick
+        "crt": True,               # scanlines and a dark rim over them
+    },
     "radar": {
         "home": True,              # centre on [location] in config.toml
         "lat": None,               # otherwise here
@@ -227,7 +245,7 @@ class Settings:
             disp["max_brightness"] = _num(disp.get("max_brightness"), 100, disp["min_brightness"], 100, int)
             disp["sleep_at"] = _hm(disp.get("sleep_at"), old.get("sleep_at", "00:30"))
             disp["wake_at"] = _hm(disp.get("wake_at"), old.get("wake_at", "06:30"))
-            for k in ("auto_brightness", "clock_24h", "night_enabled", "boot_info"):
+            for k in ("auto_brightness", "clock_24h", "night_enabled", "boot_info", "boot_animation", "announce_screens"):
                 disp[k] = bool(disp.get(k))
             d["gauge"]["backlight"] = bool(d["gauge"].get("backlight"))
             if d["gauge"].get("metric") not in {m["id"] for m in GAUGE_METRICS}:
@@ -244,6 +262,10 @@ class Settings:
             cd = d.get("countdown") or {}
             d["countdown"] = {"label": str(cd.get("label", ""))[:16].upper(),
                               "date": cd.get("date") if re.match(r"^\d{4}-\d{2}-\d{2}$", str(cd.get("date", ""))) else "2027-01-01"}
+            rt = d.get("retro") or {}
+            known = [a["id"] for a in RETRO_ANIMATIONS]
+            picked = [a for a in known if a in (rt.get("animations") or [])]
+            d["retro"] = {"animations": picked or known, "crt": bool(rt.get("crt", True))}
             r = d.get("radar") or {}
             lat, lon = _num(r.get("lat"), None, -90, 90), _num(r.get("lon"), None, -180, 180)
             d["radar"] = {"home": bool(r.get("home", True)) or lat is None or lon is None, "lat": lat, "lon": lon,
@@ -255,4 +277,5 @@ class Settings:
 
     def catalogue(self):
         """Static lists the web page needs to build its controls."""
-        return {"screens": SCREENS, "gauge_metrics": GAUGE_METRICS, "sound_events": SOUND_EVENTS}
+        return {"screens": SCREENS, "gauge_metrics": GAUGE_METRICS, "sound_events": SOUND_EVENTS,
+                "retro_animations": RETRO_ANIMATIONS}

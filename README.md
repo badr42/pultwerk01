@@ -77,9 +77,10 @@ Then open the control page on your phone (same Wi-Fi): the address is printed by
 |---|---|
 | Top | Live picture of the round screen, Prev / Next / Radar / Sleep |
 | Screens | Switch each screen on or off, change the order (arrows), set how long each stays; tap a name to show it now |
-| Display | Automatic brightness (light sensor, with darkest/brightest-room levels) or a fixed level; night sleep times; 24-hour clock; start-up QR code |
+| Display | Automatic brightness (light sensor, with darkest/brightest-room levels) or a fixed level; night sleep times; 24-hour clock; start-up QR code; retro start-up (with a Play button); announcements that show their screen |
 | Gauge | Dial light on/off; what the needle shows (16 choices); sweep test |
 | Radar | Centre it on home or any spot (latitude, longitude), and set the range from 5 to 100 nm |
+| Retro | Which animations the Retro screen may pick (each with a Play button), CRT look on or off |
 | Sound | Mute, volume, quiet hours, which events make a sound (each with a Play button), share-price alert threshold |
 | Tickers | Up to 8 symbols with labels, in order; one slide each. Tadawul codes end in `.SR` (2222.SR Aramco, 1120.SR Al Rajhi, 7010.SR STC); also BTC-USD, GC=F (gold), EURSAR=X |
 | Photos | Upload from the phone (resized to 1440 px on the phone first), delete, tap one to show it now |
@@ -89,13 +90,17 @@ Every change saves at once and shows on the screen within a second. To lock the 
 
 ## Screens
 
-Photos · Clock · Date · Month calendar · World clocks · Day/month/year progress · Countdown · Hijri date (Umm al-Qura, Arabic month) · Arabic date (weekday, date and Hijri date in Arabic) · Next prayer · Occasions (days to Ramadan, Eid al-Fitr, Arafah, Eid al-Adha, Hijri New Year, Founding Day, National Day; counts Ramadan days during the month) · Share prices · Weather · 3-day forecast · UV index · Wind & humidity · Air quality · Sun · Moon · System (QR code to the page, address, CPU temperature). Radar is on key B.
+Photos · Clock · Date · Month calendar · World clocks · Day/month/year progress · Countdown · Hijri date (Umm al-Qura, Arabic month) · Arabic date (weekday, date and Hijri date in Arabic) · Next prayer · Occasions (days to Ramadan, Eid al-Fitr, Arafah, Eid al-Adha, Hijri New Year, Founding Day, National Day; counts Ramadan days during the month) · Share prices · Weather · 3-day forecast · UV index · Wind & humidity · Air quality · Sun · Moon · Retro animations (oscilloscope, plasma, starfield, code rain, bouncing logo, synthwave sunset; one at random each time) · System (QR code to the page, address, CPU temperature). Radar is on key B.
+
+**Start-up:** every time the app starts (also after an update) it plays a short retro sequence: an old TV switching on, start-up checks with real results (memory, gauge, light sensor, sound, network, clock), then the logo drops in on a chiptune while the needle sweeps. A key skips it. It does not play while the display is asleep for the night.
+
+**Announcements:** when the hour, a prayer time or a price move makes its sound, its screen (clock, that prayer, that ticker) also comes up for 15 s, even when the sound is muted or in quiet hours. Nothing happens for an announcement that is switched off under Sound, while the display sleeps, on the radar, or within a minute of a key press or a change on the page. NEXT closes it early.
 
 Hijri dates and occasions use the Umm al-Qura calendar from aladhan.com (an offline estimate is shown with ≈ until it answers); the real start of Ramadan and the Eids can still move by a day with the moon sighting. Weather, UV, forecast and air quality come from Open-Meteo, prices from Yahoo Finance, aircraft from airplanes.live. None need an account.
 
 ## Keys
 
-- **A (NEXT)**: next screen · hold 1.5 s = sleep/wake · in radar = leave radar
+- **A (NEXT)**: next screen · hold 1.5 s = sleep/wake · in radar = leave radar · skips the start-up · closes an announcement
 - **B (RADAR)**: radar on/off
 
 ## Wiring (BCM numbers, header pins in brackets)
@@ -127,4 +132,4 @@ Stop the service first for the hardware tests: `sudo systemctl stop desk-display
 
 ## Files
 
-`desk_display.py` display, gauge, sound, sensors · `settings.py` everything the page can change (saved in `settings.json`) · `web.py` + `web_ui.html` the control page (standard library only) · `wifi_setup.py` + `wifi_ui.html` Wi-Fi setup hotspot · `prepare-image.sh` readies a master card · `config.example.toml` template for the Pi's `config.toml` (hardware and location) · `update.sh`, `desk-update.service`, `desk-update.timer` automatic updates · `fonts/` Inter and Noto Kufi Arabic (both SIL Open Font License).
+`desk_display.py` display, gauge, sound, sensors · `settings.py` everything the page can change (saved in `settings.json`) · `web.py` + `web_ui.html` the control page (standard library only) · `wifi_setup.py` + `wifi_ui.html` Wi-Fi setup hotspot · `retro.py` the start-up sequence and retro animations · `prepare-image.sh` readies a master card · `config.example.toml` template for the Pi's `config.toml` (hardware and location) · `update.sh`, `desk-update.service`, `desk-update.timer` automatic updates · `fonts/` Inter and Noto Kufi Arabic (both SIL Open Font License).

@@ -7,7 +7,7 @@ Standard library only (no Flask): a threaded HTTP server with a small JSON API a
     GET  /api/status             live status only (polled every 2 s)
     GET  /api/screen.png         what the round screen shows right now
     POST /api/settings           partial settings JSON, merged and saved
-    POST /api/action             {"name": "next"|"prev"|"radar"|"toggle_sleep"|"show"|"sound_test"|"gauge_test"|"refresh"|"show_photo", "arg": ...}
+    POST /api/action             {"name": "next"|"prev"|"radar"|"toggle_sleep"|"show"|"sound_test"|"gauge_test"|"refresh"|"show_photo"|"retro"|"boot", "arg": ...}
     GET  /api/photos             list of photos
     GET  /api/photos/thumb?name= 240 px JPEG thumbnail (cached in .thumbs/)
     POST /api/photos?name=       raw image bytes in the body (the page resizes to 1440 px before sending)
