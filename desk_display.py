@@ -1287,15 +1287,56 @@ def gauge_value(app, metric, now):
 
 # --------------------------------------------------------------------------- sound
 class Sound:
-    """Short tones rendered to WAV and played with aplay on the I2S amp. Nothing runs between sounds."""
+    """Short tones played with aplay on the I2S amp.
+
+    keep_open (default): one aplay runs all the time and gets silence between sounds, so the I2S clock
+    never stops and the MAX98357A does not pop. Otherwise each sound starts its own aplay."""
+
+    BLOCK_S = 0.02                                       # 20 ms blocks to the open aplay
+    MAX_WAITING_S = 3                                    # drop a sound when this much is already queued
 
     def __init__(self, cfg):
         self.cfg = cfg["sound"]
         self.rate = int(self.cfg.get("sample_rate", 22050))
         self.lock = threading.Lock()
         self.enabled = bool(self.cfg.get("enabled", True)) and shutil.which("aplay") is not None
+        self.keep_open = bool(self.cfg.get("keep_open", True))
+        self.pending = bytearray()                       # raw PCM waiting for the open aplay
         if not self.enabled:
             print("[sound] aplay not found or sound disabled; silent", flush=True)
+        elif self.keep_open:
+            threading.Thread(target=self._stream, daemon=True).start()
+
+    def _stream(self):
+        block = int(self.rate * self.BLOCK_S) * 2
+        silence = b"\0" * block
+        cmd = ["aplay", "-q", "-D", self.cfg.get("device", "default"), "-t", "raw", "-f", "S16_LE", "-c", "1",
+               "-r", str(self.rate), "--buffer-time=100000", "-"]
+        while True:
+            p = None
+            try:
+                p = subprocess.Popen(cmd, stdin=subprocess.PIPE)          # its errors go to the journal
+                try:                                     # a 64 KB pipe would hold ~1.5 s of silence ahead of each sound
+                    import fcntl
+                    fcntl.fcntl(p.stdin, fcntl.F_SETPIPE_SZ, 4096)
+                except (ImportError, AttributeError, OSError):
+                    pass
+                while True:
+                    with self.lock:
+                        chunk = bytes(self.pending[:block])
+                        del self.pending[:block]
+                    p.stdin.write(chunk.ljust(block, b"\0") if chunk else silence)   # blocks: paces the loop
+                    p.stdin.flush()
+            except Exception as e:
+                print(f"[sound] aplay stopped: {e!r}; reopening", flush=True)
+            if p:
+                try:
+                    p.stdin.close()
+                except OSError:
+                    pass
+                p.kill()
+                p.wait()
+            time.sleep(2)
 
     def _tone(self, notes, vol):
         """notes: list of (freq_hz, seconds, gap_seconds). Sine with a soft envelope."""
@@ -1331,7 +1372,14 @@ class Sound:
         if not self.enabled or event not in self.PATTERNS:
             return
         vol = (max(1, min(100, volume)) / 100) ** 1.6                   # perceptual-ish volume curve
-        data = self._wav(self._tone(self.PATTERNS[event], vol))
+        pcm = self._tone(self.PATTERNS[event], vol)
+        if self.keep_open:
+            with self.lock:
+                if len(self.pending) > self.MAX_WAITING_S * self.rate * 2:
+                    return
+                self.pending += pcm
+            return
+        data = self._wav(pcm)
 
         def run():
             with self.lock:
@@ -1897,6 +1945,7 @@ def main():
             print(ev)
             snd.play(ev, 70)
             time.sleep(1.2)
+        time.sleep(0.5)                                  # let the last sound finish before exit
         return
     if args.demo:
         cfg["photos"]["folder"] = str(HERE / "photos")

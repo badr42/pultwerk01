@@ -61,6 +61,7 @@ backlight_pin = 27                 # dial light: white LED, GPIO27 -> 68 ohm -> 
 enabled = true
 device = "plughw:CARD=MAX98357A,DEV=0"   # the I2S amp; check the name with: aplay -l
 sample_rate = 22050
+keep_open = true                   # one aplay stays open and plays silence between sounds, so the amp never pops
 
 [light]
 # "bh1750" = GY-302 on I2C (SDA pin 3, SCL pin 5, VCC 3.3 V), "ldr" = the old LDR+capacitor on GPIO 17, "none"
