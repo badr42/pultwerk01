@@ -37,6 +37,8 @@ SCREENS = [
     {"id": "system",     "group": "System",        "name": "System",          "desc": "QR code to this page, address, CPU temperature"},
 ]
 
+SLEEP_ANIMATION_TIMES = ("off", "10", "30", "night")
+
 # The retro animation screen picks one of these at random (retro.py draws them).
 RETRO_ANIMATIONS = [
     {"id": "scope",     "name": "Oscilloscope",     "desc": "Green Lissajous curves with a fading glow"},
@@ -117,6 +119,8 @@ DEFAULTS = {
         "boot_info": True,         # show the System screen (QR code to this page) for 20 s after start-up
         "boot_animation": True,    # the retro start-up sequence (retro.py) every time the app starts
         "announce_screens": True,  # the hour, a prayer or a price move also brings up its screen for a while
+        "sleep_animation": "10",   # while asleep: "off", "10" or "30" minutes of sleepy pixel art, or "night"
+        "sleep_brightness": 8,     # backlight % meanwhile
     },
     "gauge": {
         "metric": "temp",
@@ -244,6 +248,9 @@ class Settings:
             disp["min_brightness"] = _num(disp.get("min_brightness"), 8, 1, 100, int)
             disp["max_brightness"] = _num(disp.get("max_brightness"), 100, disp["min_brightness"], 100, int)
             disp["sleep_at"] = _hm(disp.get("sleep_at"), old.get("sleep_at", "00:30"))
+            if disp.get("sleep_animation") not in SLEEP_ANIMATION_TIMES:
+                disp["sleep_animation"] = old.get("sleep_animation", "10")
+            disp["sleep_brightness"] = _num(disp.get("sleep_brightness"), 8, 1, 50, int)
             disp["wake_at"] = _hm(disp.get("wake_at"), old.get("wake_at", "06:30"))
             for k in ("auto_brightness", "clock_24h", "night_enabled", "boot_info", "boot_animation", "announce_screens"):
                 disp[k] = bool(disp.get(k))

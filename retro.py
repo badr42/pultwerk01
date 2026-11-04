@@ -462,3 +462,198 @@ ANIMATIONS = {"scope": Scope, "plasma": Plasma, "starfield": Starfield, "rain": 
 
 def make(anim_id, seed=None):
     return ANIMATIONS[anim_id](random.Random(seed))
+
+
+# --------------------------------------------------------------------------- sleep animations
+# Dim, slow pixel art for while the display sleeps, drawn on a 72x72 grid (each cell 5x5 screen pixels).
+G = 72
+NIGHT = (6, 8, 20)
+
+
+def _up(im):
+    return im.resize((S, S), Image.NEAREST)
+
+
+def _dim(c, k):
+    return tuple(int(v * max(0.0, min(1.0, k))) for v in c)
+
+
+def _zzz(im, x, y, t, color, period=3.6, n=3, bg=NIGHT):
+    """Z's that rise from (x, y), drift right and fade into bg, one after another."""
+    z = pixel_text("Z", 1)
+    for i in range(n):
+        f = (t / period + i / n) % 1
+        k = math.sin(f * math.pi)
+        col = tuple(int(b + (c - b) * k) for c, b in zip(color, bg))
+        im.paste(col, (int(x + f * 9 + math.sin(f * 6) * 1.5), int(y - f * 17)), z)
+
+
+class SleepCat:
+    """A curled-up cat that breathes, twitches its tail now and then, and lets out Z's."""
+
+    FUR, STRIPE, DARK, PINK = (214, 132, 52), (166, 94, 34), (70, 34, 20), (232, 140, 140)
+
+    def __init__(self, rnd, phase=0.0):
+        self.stars = [(rnd.randrange(8, 64), rnd.randrange(6, 26), rnd.random() * 6) for _ in range(12)]
+
+    def frame(self, t):
+        im = Image.new("RGB", (G, G), NIGHT)
+        d = ImageDraw.Draw(im)
+        for x, y, ph in self.stars:
+            d.point((x, y), fill=_dim((190, 190, 230), 0.35 + 0.3 * math.sin(t * 1.3 + ph)))
+        d.ellipse([10, 50, 62, 63], fill=(30, 20, 44))                                   # cushion
+        b = round(1.2 + 1.2 * math.sin(t * 2 * math.pi / 4))                             # one breath every 4 s
+        d.ellipse([22, 36 - b, 57, 57], fill=self.FUR)
+        for x in (34, 40, 46):
+            d.line([(x, 37 - b), (x + 1, 41 - b)], fill=self.STRIPE)
+        twitch = 2 if t % 7 < 0.6 else 0
+        d.line([(56, 52), (59, 56), (55, 59), (44, 60), (34, 59), (27, 57 - twitch)], fill=self.FUR, width=3)
+        d.ellipse([12, 39, 32, 57], fill=self.FUR)                                       # head
+        d.polygon([(14, 44), (15, 33), (22, 40)], fill=self.FUR)
+        d.polygon([(22, 39), (29, 33), (31, 43)], fill=self.FUR)
+        d.polygon([(16, 41), (16, 36), (19, 40)], fill=self.PINK)
+        d.polygon([(25, 39), (28, 36), (29, 41)], fill=self.PINK)
+        for ex in (16, 24):                                                               # eyes shut
+            d.line([(ex, 47), (ex + 1, 48), (ex + 2, 48), (ex + 3, 47)], fill=self.DARK)
+        d.point((21, 51), fill=self.PINK)
+        d.line([(19, 52), (21, 53), (23, 52)], fill=self.DARK)
+        _zzz(im, 30, 30, t, (200, 200, 255))
+        return _up(im)
+
+
+class SleepRobot:
+    """The round screen as a robot face, fast asleep: a snore bubble grows and pops, one eye peeks now and then."""
+
+    GLOW, SOFT = (110, 190, 245), (60, 110, 150)
+
+    def __init__(self, rnd, phase=0.0):
+        pass
+
+    def frame(self, t):
+        im = Image.new("RGB", (G, G), (8, 10, 16))
+        d = ImageDraw.Draw(im)
+        d.line([(36, 12), (36, 6)], fill=self.SOFT)                                     # antenna
+        d.ellipse([34, 2, 38, 6], fill=(230, 60, 60) if t % 3 < 0.8 else (70, 20, 20))
+        d.rounded_rectangle([18, 29, 30, 32], 1, fill=self.GLOW)                         # left eye, shut
+        if 12 <= t % 20 < 13.2:                                                           # right eye peeks
+            d.ellipse([44, 26, 52, 34], fill=self.GLOW)
+            d.ellipse([47, 29, 49, 31], fill=(8, 10, 16))
+        else:
+            d.rounded_rectangle([42, 29, 54, 32], 1, fill=self.GLOW)
+        for x in (13, 54):
+            d.rectangle([x, 38, x + 4, 40], fill=(120, 50, 80))                           # cheeks
+        o = 1 + (1 + math.sin(t * 2 * math.pi / 5)) * 1.2
+        d.ellipse([36 - o, 47 - o / 2, 36 + o, 47 + o / 2], outline=self.GLOW)
+        f = (t % 5) / 5                                                                   # snore bubble
+        if f < 0.86:
+            r = 1 + 7 * f / 0.86
+            cx, cy = 40 + r, 47 - r * 0.2
+            d.ellipse([cx - r, cy - r, cx + r, cy + r], outline=(150, 210, 255))
+            d.point((cx - r * 0.5, cy - r * 0.5), fill=(230, 245, 255))
+        elif f < 0.94:
+            cx, cy = 47, 46
+            for k in range(6):
+                a = k * math.pi / 3
+                d.point((cx + math.cos(a) * 8, cy + math.sin(a) * 8), fill=(150, 210, 255))
+        _zzz(im, 14, 20, t, (90, 120, 170), period=4.5, bg=(8, 10, 16))
+        return _up(im)
+
+
+class SleepSky:
+    """Night over the dunes: twinkling stars, the moon in its real phase, now and then a shooting star."""
+
+    def __init__(self, rnd, phase=0.25):
+        self.phase, self.seed = phase, rnd.random()
+        self.stars = [(rnd.randrange(4, 68), rnd.randrange(4, 46), rnd.random() * 6, rnd.uniform(0.8, 2.2))
+                      for _ in range(48)]
+        sky = np.zeros((G, G, 3), np.float32)
+        f = (np.arange(G) / G)[:, None]
+        sky[:] = (np.array([2, 4, 14]) + (np.array([16, 18, 44]) - (2, 4, 14)) * f)[:, None, :]
+        self.bg = Image.fromarray(sky.astype(np.uint8), "RGB")
+        d = ImageDraw.Draw(self.bg)
+        for base, amp, col in ((54, 4, (16, 13, 30)), (60, 3, (22, 17, 38))):
+            pts = [(x, base - amp * math.sin(x / 9 + base)) for x in range(0, G + 1, 2)]
+            d.polygon(pts + [(G, G), (0, G)], fill=col)
+        yy, xx = np.mgrid[-8:9, -8:9].astype(np.float32)
+        r = 8.0
+        inside = xx ** 2 + yy ** 2 <= r * r
+        w = np.sqrt(np.maximum(r * r - yy ** 2, 0.01))
+        k = math.cos(2 * math.pi * phase)
+        lit = (xx / w > k) if phase < 0.5 else (xx / w < -k)
+        moon = np.zeros((17, 17, 4), np.uint8)
+        moon[inside] = (30, 32, 48, 255)
+        moon[inside & lit] = (236, 224, 170, 255)
+        self.moon = Image.fromarray(moon, "RGBA")
+
+    def frame(self, t):
+        im = self.bg.copy()
+        d = ImageDraw.Draw(im)
+        for x, y, ph, w in self.stars:
+            d.point((x, y), fill=_dim((220, 220, 255), 0.25 + 0.6 * (0.5 + 0.5 * math.sin(t * w + ph))))
+        im.paste(self.moon, (44, 10), self.moon)
+        n, f = divmod(t, 9)                                                               # a shooting star every 9 s
+        if f < 0.9:
+            g = random.Random(int(n) + self.seed)
+            x0, y0 = g.uniform(20, 60), g.uniform(6, 22)
+            for k in range(7):
+                p = f / 0.9 - k * 0.04
+                if 0 <= p <= 1:
+                    d.point((x0 - p * 26, y0 + p * 14), fill=_dim((255, 250, 220), 1 - k / 7))
+        return _up(im)
+
+
+class SleepMoon:
+    """A crescent moon in a nightcap, rocking gently, with Z's."""
+
+    def __init__(self, rnd, phase=0.0):
+        self.stars = [(rnd.randrange(4, 68), rnd.randrange(4, 68), rnd.random() * 6) for _ in range(20)]
+        layer = Image.new("RGBA", (G, G), (0, 0, 0, 0))
+        d = ImageDraw.Draw(layer)
+        d.ellipse([16, 18, 56, 58], fill=(240, 214, 120, 255))
+        d.ellipse([25, 11, 63, 51], fill=(0, 0, 0, 0))                                   # bite: a crescent
+        d.line([(20, 33), (22, 34), (24, 34), (26, 33)], fill=(90, 64, 30, 255))          # eye shut
+        d.line([(22, 43), (24, 44), (26, 43)], fill=(90, 64, 30, 255))                   # smile
+        d.point((19, 38), fill=(240, 150, 120, 255))
+        d.polygon([(19, 24), (33, 18), (44, 6), (40, 16), (30, 22)], fill=(80, 116, 210, 255))   # nightcap
+        d.line([(18, 25), (31, 19)], fill=(235, 235, 245, 255), width=2)
+        d.ellipse([42, 3, 47, 8], fill=(235, 235, 245, 255))
+        self.layer = layer
+        self.clouds = [(rnd.uniform(0, G), rnd.choice((52, 58, 63)), rnd.uniform(1.2, 2.4)) for _ in range(3)]
+
+    def frame(self, t):
+        im = Image.new("RGB", (G, G), NIGHT)
+        d = ImageDraw.Draw(im)
+        for x, y, ph in self.stars:
+            d.point((x, y), fill=_dim((180, 180, 225), 0.3 + 0.3 * math.sin(t + ph)))
+        moon = self.layer.rotate(6 * math.sin(t * 2 * math.pi / 6), Image.NEAREST, center=(36, 38))
+        im.paste(moon, (0, 0), moon)
+        for x0, y, v in self.clouds:
+            x = (x0 + t * v) % (G + 24) - 12
+            d.rounded_rectangle([x, y, x + 14, y + 4], 2, fill=(28, 28, 58))
+            d.rounded_rectangle([x + 3, y - 2, x + 9, y + 2], 2, fill=(28, 28, 58))
+        _zzz(im, 44, 30, t, (230, 210, 150), period=4)
+        return _up(im)
+
+
+class SleepStandby:
+    """One soft light that breathes, like the sleep light on old laptops."""
+
+    def __init__(self, rnd, phase=0.0):
+        pass
+
+    def frame(self, t):
+        k = ((1 - math.cos(2 * math.pi * t / 4.5)) / 2) ** 1.6
+        im = Image.new("RGB", (S, S), (0, 0, 0))
+        d = ImageDraw.Draw(im)
+        for r in range(44, 6, -3):
+            fall = (1 - r / 46) ** 1.5
+            d.ellipse([C - r, C - r, C + r, C + r], fill=_dim((255, 190, 110), (0.1 + 0.9 * k) * fall))
+        d.ellipse([C - 8, C - 8, C + 8, C + 8], fill=_dim((255, 226, 190), 0.2 + 0.8 * k))
+        return im
+
+
+SLEEP = {"cat": SleepCat, "robot": SleepRobot, "sky": SleepSky, "moon": SleepMoon, "standby": SleepStandby}
+
+
+def make_sleep(sleep_id, phase=0.25, seed=None):
+    return SLEEP[sleep_id](random.Random(seed), phase)

@@ -47,6 +47,7 @@ speed_hz = 40000000
 cycle = 22                         # Button A: short = next slide, long = sleep/wake, in radar = exit radar
 radar = 23                         # Button B: toggle radar
 long_press_seconds = 1.5
+both_seconds = 3                   # hold A and B together this long for a retro animation
 
 [gauge]
 enabled = true

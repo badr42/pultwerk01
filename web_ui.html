@@ -168,9 +168,13 @@ footer{color:var(--faint);font-size:12px;text-align:center;padding:30px 0 calc(4
       <div id="manualBox"><div class="slider"><div class="top"><span>Brightness</span><span class="val" id="brightVal"></span></div><input type="range" id="bright" min="1" max="100"></div></div>
     </div>
     <div class="card" style="margin-top:12px">
-      <div class="row"><div class="grow"><div class="name">Sleep at night</div><div class="desc">Screen and dial light off; any key wakes it</div></div>
+      <div class="row"><div class="grow"><div class="name">Sleep at night</div><div class="desc">Dial light off, then the screen after its sleep animation; any key wakes it</div></div>
         <label class="sw"><input type="checkbox" id="night"><span></span></label></div>
       <div class="split" id="nightBox"><label>Sleep at<input type="time" id="sleepAt"></label><label>Wake at<input type="time" id="wakeAt"></label></div>
+      <div class="row"><div class="grow"><div class="name">Sleep animation</div><div class="desc">Cat, robot, night sky, moon and standby light, 2 min each, dimmed. Also after a long press on NEXT.</div></div>
+        <button class="btn" style="padding:7px 12px" id="sleepPlay">Play</button>
+        <select id="sleepAnim" aria-label="Sleep animation"><option value="off">Off</option><option value="10">10 min</option><option value="30">30 min</option><option value="night">All night</option></select></div>
+      <div class="slider" id="sleepBrightBox"><div class="top"><span>Brightness while asleep</span><span class="val" id="sleepBrightVal"></span></div><input type="range" id="sleepBright" min="1" max="50"></div>
       <div class="row"><div class="grow"><div class="name">24-hour clock</div></div><label class="sw"><input type="checkbox" id="clock24"><span></span></label></div>
       <div class="row"><div class="grow"><div class="name">Start-up QR code</div><div class="desc">Show the address of this page for 20 s after the display starts</div></div>
         <label class="sw"><input type="checkbox" id="bootInfo"><span></span></label></div>
@@ -385,6 +389,8 @@ function renderDisplay() {
   $("#sleepAt").value = d.sleep_at; $("#wakeAt").value = d.wake_at;
   $("#clock24").checked = d.clock_24h; $("#bootInfo").checked = d.boot_info;
   $("#bootAnim").checked = d.boot_animation; $("#announce").checked = d.announce_screens;
+  $("#sleepAnim").value = d.sleep_animation; $("#sleepBrightBox").style.display = d.sleep_animation === "off" ? "none" : "";
+  $("#sleepBright").value = d.sleep_brightness; $("#sleepBrightVal").textContent = d.sleep_brightness + " %";
 }
 function wireDisplay() {
   $("#autoBright").onchange = e => { save({display: {auto_brightness: e.target.checked}}); renderDisplay(); };
@@ -403,6 +409,9 @@ function wireDisplay() {
   $("#bootAnim").onchange = e => save({display: {boot_animation: e.target.checked}});
   $("#announce").onchange = e => save({display: {announce_screens: e.target.checked}});
   $("#bootPlay").onclick = () => { act("boot"); toast("Playing the start-up"); };
+  $("#sleepAnim").onchange = e => { save({display: {sleep_animation: e.target.value}}); renderDisplay(); };
+  $("#sleepBright").oninput = e => { $("#sleepBrightVal").textContent = e.target.value + " %"; save({display: {sleep_brightness: +e.target.value}}, 250); };
+  $("#sleepPlay").onclick = () => { act("sleep_preview"); toast("Playing the sleep animations, 5 s each"); };
 }
 
 /* ---------- retro ---------- */
@@ -612,11 +621,11 @@ async function poll() {
   polling = true;
   try {
     ST = await api("/api/status");
-    const bits = [`<b>${ST.asleep ? "Asleep" : ST.slide ? screenName(ST.slide_id) + (ST.slide.includes("·") ? " · " + ST.slide.split("·")[1].trim() : "") : "…"}</b>`];
+    const bits = [`<b>${ST.asleep ? "Asleep" + (ST.sleep_anim ? " · " + ST.sleep_anim : "") : ST.slide ? screenName(ST.slide_id) + (ST.slide.includes("·") ? " · " + ST.slide.split("·")[1].trim() : "") : "…"}</b>`];
     if (ST.brightness != null) bits.push(`${ST.brightness} %`);
     if (ST.lux != null) bits.push(`${ST.lux} lx`);
     $("#now").innerHTML = bits.join(" &nbsp;·&nbsp; ");
-    $("#live").classList.toggle("asleep", !!ST.asleep);
+    $("#live").classList.toggle("asleep", !!ST.asleep && !ST.sleep_anim);
     $("#sleepBtn").textContent = ST.asleep ? "Wake" : "Sleep";
     $("#radarBtn").classList.toggle("on", !!ST.radar);
     $("#luxLine").textContent = ST.lux == null ? "Follows the light sensor"
@@ -629,7 +638,7 @@ async function poll() {
       const live = (ST.quotes_ok || []).includes(t.symbol.toUpperCase());
       el.textContent = live ? "● LIVE" : "WAITING FOR DATA"; el.classList.toggle("ok", live); });
     $("#foot").textContent = `Pultwerk01 · ${ST.ip ? ST.ip : "offline"} · up ${Math.floor(ST.uptime_s / 3600)} h ${Math.floor(ST.uptime_s % 3600 / 60)} min`;
-    if (!imgBusy && !ST.asleep) {
+    if (!imgBusy && (!ST.asleep || ST.sleep_anim)) {
       imgBusy = true; const img = $("#screen");
       img.onload = img.onerror = () => imgBusy = false;
       img.src = "/api/screen.png?t=" + Date.now();

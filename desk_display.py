@@ -1174,6 +1174,9 @@ RENDERERS = {"photo": None, "clock": slide_clock, "date": slide_date, "hijri": s
              "calendar": slide_calendar, "progress": slide_progress, "system": slide_system, "retro": None}
 ANNOUNCE_SECONDS = 15                  # how long an announcement's screen stays up
 RETRO_FPS = 15                         # frame rate asked for while something moves; the Pi manages about 10-15
+SLEEP_FPS = 6                          # sleep animations move slowly
+SLEEP_ROTATE_S = 120                   # each sleep animation plays this long, then the next
+SLEEP_PREVIEW_S = 5                    # and this long each in the preview from the page
 
 
 # --------------------------------------------------------------------------- ambient light
@@ -1507,19 +1510,53 @@ def setup_buttons(cfg, events):
     b = cfg["buttons"]
     a = Button(b["cycle"], pull_up=True, bounce_time=0.03, hold_time=b.get("long_press_seconds", 1.5))
     r = Button(b["radar"], pull_up=True, bounce_time=0.03)
-    held = {"a": False}
+    both_s = b.get("both_seconds", 3)
+    st = {"held": False, "both": False, "timer": None}         # both: the keys were down together; no single action
+    lock = threading.Lock()
+
+    def both_down():
+        with lock:
+            if st["both"]:
+                return
+            st["both"] = True
+            st["timer"] = threading.Timer(both_s, lambda: a.is_pressed and r.is_pressed and events.put("AB_long"))
+            st["timer"].daemon = True
+            st["timer"].start()
+
+    def released():
+        with lock:
+            if st["both"] and not a.is_pressed and not r.is_pressed:
+                st["both"] = False
+                if st["timer"]:
+                    st["timer"].cancel()
+
+    def a_pressed():
+        if r.is_pressed:
+            both_down()
 
     def a_held():
-        held["a"] = True
+        if st["both"] or r.is_pressed:
+            return
+        st["held"] = True
         events.put("A_long")
 
     def a_released():
-        if not held["a"]:
+        if not st["held"] and not st["both"]:
             events.put("A_short")
-        held["a"] = False
+        st["held"] = False
+        released()
 
-    a.when_held, a.when_released = a_held, a_released
-    r.when_pressed = lambda: events.put("B")
+    def r_pressed():
+        if a.is_pressed:
+            both_down()
+
+    def r_released():                                           # on release, so holding both does not open the radar
+        if not st["both"]:
+            events.put("B")
+        released()
+
+    a.when_pressed, a.when_held, a.when_released = a_pressed, a_held, a_released
+    r.when_pressed, r.when_released = r_pressed, r_released
     return a, r
 
 
@@ -1554,6 +1591,9 @@ class App:
         self.fade_next = False
         self.last_input = 0.0                                    # a key or the web page; announcements hold back
         self.anim, self.anim_key, self.anim_id, self.anim_t0 = None, None, None, 0.0
+        self.sleep_on, self.sleep_t0, self.sleep_until, self.sleep_first = False, 0.0, 0.0, 0
+        self.sleep_anim, self.sleep_key, self.sleep_kt, self.sleep_name = None, None, 0.0, None
+        self.retro_on_wake = False
         self.lock = threading.Lock()
         self.rebuild_slides()
 
@@ -1675,6 +1715,10 @@ class App:
         tk = self.takeover
         if tk["kind"] == "retro":
             return self.retro_frame(("takeover", tk["t0"]), tk["arg"])
+        if tk["kind"] == "sleep":                                # preview from the page: each one for a few seconds
+            if tk.get("first") is None:
+                tk["first"], self.sleep_first, self.sleep_key = True, 0, None
+            return self.sleep_frame(time.time() - tk["t0"], SLEEP_PREVIEW_S)
         fn = RENDERERS.get(tk["kind"])
         try:
             im = fn(self, now, tk["arg"])
@@ -1705,7 +1749,7 @@ class App:
         if self.radar or self.boot_until or (self.wifi and self.wifi.active):
             return False
         if self.takeover:
-            return self.takeover["kind"] == "retro" or (self.takeover.get("flourish") and time.time() - self.takeover["t0"] < 1)
+            return self.takeover["kind"] in ("retro", "sleep") or (self.takeover.get("flourish") and time.time() - self.takeover["t0"] < 1)
         return self.slides[self.idx][0] == "retro"
 
     def show_for(self, kind, arg, seconds, flourish=False):
@@ -1721,6 +1765,45 @@ class App:
                 or (self.wifi and self.wifi.active) or time.time() - self.last_input < 60):
             return
         self.show_for(kind, arg, ANNOUNCE_SECONDS, flourish)
+
+    # -- sleep animations
+    def start_sleep(self):
+        """Going to sleep: a dim sleep animation for a while (rotating through all of them), or straight to dark."""
+        mode = self.st["display"].get("sleep_animation", "10")
+        if mode == "off":
+            self.sleep_on = False
+            self.screen.on(False)
+            return
+        self.sleep_on, self.sleep_t0 = True, time.monotonic()
+        self.sleep_until = math.inf if mode == "night" else self.sleep_t0 + int(mode) * 60
+        self.sleep_first = random.randrange(len(retro.SLEEP))   # a different one first each night
+        self.sleep_key = None
+        self.screen.set_level(self.st["display"].get("sleep_brightness", 8))
+
+    def sleep_frame(self, e, step):
+        """The sleep animation e seconds in, moving to the next one every step seconds."""
+        names = list(retro.SLEEP)
+        k = (self.sleep_first + int(e // step)) % len(names)
+        if k != self.sleep_key:
+            phase = moon_phase(datetime.now(timezone.utc))
+            self.sleep_anim, self.sleep_key, self.sleep_kt = retro.make_sleep(names[k], phase), k, e
+            self.sleep_name = names[k]
+        return self.sleep_anim.frame(e - self.sleep_kt)
+
+    def tick_sleep(self):
+        if time.monotonic() > self.sleep_until:
+            self.sleep_on = False
+            self.screen.on(False)
+            return
+        key = self.sleep_key
+        try:
+            im = self.sleep_frame(time.monotonic() - self.sleep_t0, SLEEP_ROTATE_S)
+        except Exception as e:                                   # never keep the screen lit on an error
+            print(f"[sleep] {e!r}", flush=True)
+            self.sleep_on = False
+            self.screen.on(False)
+            return
+        self.push(im, fade=key is not None and key != self.sleep_key)
 
     def start_boot(self):
         self.boot_seq, self.boot_t0 = retro.BootSequence(boot_title(), post_checks(self)), time.monotonic()
@@ -1762,15 +1845,22 @@ class App:
 
     def handle(self, ev, now):
         ev = str(ev)
+        if ev == "AB_long":                                     # both keys held: a retro animation, even from sleep
+            self.beep("key", now)
+            if self.asleep:
+                self.toggle_sleep(now)
+                self.retro_on_wake = True                       # played once the loop has woken the screen
+                return False
+            ev = "retro:"
         if ev in ("A_short", "B", "prev", "A_long") or ev.startswith(("show:", "retro:")):
             self.last_input = time.time()
-        if self.boot_seq and (ev in ("A_short", "B", "prev") or ev.startswith(("show:", "retro:"))):
+        if self.boot_seq and (ev in ("A_short", "B", "prev", "sleep_preview") or ev.startswith(("show:", "retro:"))):
             self.boot_seq = None                                       # a key or the page skips the start-up
             self.slide_t = time.time()
             self.gauge_t = 0
-            if not ev.startswith(("show:", "retro:")):
+            if not ev.startswith(("show:", "retro:")) and ev != "sleep_preview":
                 return True
-        if self.boot_until and ev in ("A_short", "B", "prev") or ev.startswith(("show:", "retro:")):
+        if self.boot_until and ev in ("A_short", "B", "prev", "sleep_preview") or ev.startswith(("show:", "retro:")):
             self.boot_until = self.joined_until = 0
         if ev == "sleep":
             if not self.effective_asleep(now):
@@ -1784,6 +1874,11 @@ class App:
             if ev in ("A_short", "B", "A_long"):
                 self.toggle_sleep(now)
             return False
+        if ev == "sleep_preview":
+            self.set_radar(False)
+            self.end_takeover()
+            self.show_for("sleep", None, SLEEP_PREVIEW_S * len(retro.SLEEP))
+            return True
         if ev == "boot":
             self.end_takeover()
             self.set_radar(False)
@@ -1915,6 +2010,8 @@ class App:
             self.events.put(f"retro:{arg or ''}")
         elif name == "boot":
             self.events.put("boot")
+        elif name == "sleep_preview":
+            self.events.put("sleep_preview")
         elif name == "sound_test" and self.sound:
             self.sound.play(str(arg), self.st["sound"]["volume"])
         elif name == "gauge_test":
@@ -1932,7 +2029,8 @@ class App:
         return True
 
     def preview_png(self):
-        im = self.last_img if (self.last_img is not None and not self.asleep) else Image.new("RGB", (S, S), BG)
+        shown = self.last_img is not None and (not self.asleep or self.sleep_on)
+        im = self.last_img if shown else Image.new("RGB", (S, S), BG)
         buf = io.BytesIO()
         im.save(buf, "PNG", optimize=False, compress_level=1)
         return buf.getvalue()
@@ -1953,12 +2051,15 @@ class App:
             kind = label = self.takeover["kind"]
             if kind == "retro":
                 label = f"retro · {self.anim_id}"
+            if kind == "sleep":
+                label = f"sleep · {self.sleep_name}"
         if self.boot_until and not self.radar:
             kind = label = "system"
         if self.boot_seq:
             kind = label = "start-up"
         return {"slide": "radar" if self.radar else label, "slide_id": "radar" if self.radar else kind,
                 "radar": self.radar, "asleep": self.asleep, "ip": self.ip,
+                "sleep_anim": self.sleep_name if self.asleep and self.sleep_on else None,
                 "lux": None if self.lux is None else round(self.lux, 1), "brightness": self.brightness,
                 "gauge_value": None if self.gauge_value is None else round(self.gauge_value, 1),
                 "gauge_angle": getattr(self.gauge, "angle", None), "uptime_s": int(time.time() - START),
@@ -1998,15 +2099,25 @@ class App:
                 asleep = self.effective_asleep(now) and not (self.wifi and self.wifi.active)
                 if asleep != self.asleep:
                     self.asleep = asleep
-                    self.screen.on(not asleep)
                     self.gauge.backlight(self.st["gauge"]["backlight"] and not asleep)
                     self.gauge_t = 0
-                    if not asleep:
+                    if asleep:
+                        self.boot_seq = self.takeover = None
+                        self.start_sleep()
+                    else:
+                        self.sleep_on = False
+                        self.screen.set_level(self.brightness)
+                        self.screen.on(True)
                         self.last_crc = None
+                        if self.retro_on_wake:
+                            self.retro_on_wake = False
+                            changed |= self.handle("retro:", now)
                 self.tick_gauge(now)
                 if asleep:
-                    self.boot_seq = self.takeover = None
-                    time.sleep(0.15)
+                    t0 = time.time()
+                    if self.sleep_on:
+                        self.tick_sleep()
+                    time.sleep(max(0.01, (1 / SLEEP_FPS if self.sleep_on else 0.15) - (time.time() - t0)))
                     continue
                 if self.boot_seq:
                     changed |= self.boot_cues()

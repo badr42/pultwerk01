@@ -77,7 +77,7 @@ Then open the control page on your phone (same Wi-Fi): the address is printed by
 |---|---|
 | Top | Live picture of the round screen, Prev / Next / Radar / Sleep |
 | Screens | Switch each screen on or off, change the order (arrows), set how long each stays; tap a name to show it now |
-| Display | Automatic brightness (light sensor, with darkest/brightest-room levels) or a fixed level; night sleep times; 24-hour clock; start-up QR code; retro start-up (with a Play button); announcements that show their screen |
+| Display | Automatic brightness (light sensor, with darkest/brightest-room levels) or a fixed level; night sleep times; sleep animation (off, 10 or 30 min, all night) and its brightness; 24-hour clock; start-up QR code; retro start-up (with a Play button); announcements that show their screen |
 | Gauge | Dial light on/off; what the needle shows (16 choices); sweep test |
 | Radar | Centre it on home or any spot (latitude, longitude), and set the range from 5 to 100 nm |
 | Retro | Which animations the Retro screen may pick (each with a Play button), CRT look on or off |
@@ -94,6 +94,8 @@ Photos · Clock · Date · Month calendar · World clocks · Day/month/year prog
 
 **Start-up:** every time the app starts (also after an update) it plays a short retro sequence: an old TV switching on, start-up checks with real results (memory, gauge, light sensor, sound, network, clock), then the logo drops in on a chiptune while the needle sweeps. A key skips it. It does not play while the display is asleep for the night.
 
+**Sleep:** when the display goes to sleep (at night or after a long press on NEXT) it can show dim, slow pixel art first: a sleeping cat, a robot face snoring, the night sky with the real moon phase, a moon in a nightcap, and a breathing standby light, two minutes each, starting with a different one each time. After the time set on the page (10 or 30 minutes, or all night) the screen goes dark. Any key wakes it.
+
 **Announcements:** when the hour, a prayer time or a price move makes its sound, its screen (clock, that prayer, that ticker) also comes up for 15 s, even when the sound is muted or in quiet hours. Nothing happens for an announcement that is switched off under Sound, while the display sleeps, on the radar, or within a minute of a key press or a change on the page. NEXT closes it early.
 
 Hijri dates and occasions use the Umm al-Qura calendar from aladhan.com (an offline estimate is shown with ≈ until it answers); the real start of Ramadan and the Eids can still move by a day with the moon sighting. Weather, UV, forecast and air quality come from Open-Meteo, prices from Yahoo Finance, aircraft from airplanes.live. None need an account.
@@ -101,7 +103,8 @@ Hijri dates and occasions use the Umm al-Qura calendar from aladhan.com (an offl
 ## Keys
 
 - **A (NEXT)**: next screen · hold 1.5 s = sleep/wake · in radar = leave radar · skips the start-up · closes an announcement
-- **B (RADAR)**: radar on/off
+- **B (RADAR)**: radar on/off (on release)
+- **A and B together for 3 s**: a retro animation, also from sleep; again for another one
 
 ## Wiring (BCM numbers, header pins in brackets)
 
