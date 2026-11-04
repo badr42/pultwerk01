@@ -51,9 +51,9 @@ long_press_seconds = 1.5
 [gauge]
 enabled = true
 servo_pin = 13                     # SG90 signal (orange). Red -> 5 V, brown -> GND, 1000 uF across them
-min_angle = -80                    # needle at the left end of the dial  (tune on the printed dial)
-max_angle = 80                     # right end
-park_angle = -80                   # where the needle rests for the "off" metric and at night
+min_angle = 70                     # servo angle at the dial's zero  (tune on the printed dial)
+max_angle = -70                    # servo angle at full scale; may be lower than min_angle
+park_angle = 70                    # where the needle rests for the "off" metric and at night
 settle_seconds = 0.6               # servo is powered only while moving, then released (no hum, no jitter)
 backlight_pin = 27                 # dial light: white LED, GPIO27 -> 68 ohm -> LED -> GND (about 5-10 mA); -1 = none
 
