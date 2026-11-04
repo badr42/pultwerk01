@@ -1397,6 +1397,7 @@ class App:
         self.sound = sound
         self.light = light
         self.lux, self.light_t, self.brightness = None, 0.0, self.st["display"]["brightness"]
+        self.light_failed = False
         self.slides, self.idx, self.slide_t = [], -1, 0.0
         self.radar, self.radar_t = False, 0.0
         self.override, self.override_sched = None, None
@@ -1590,16 +1591,25 @@ class App:
         threading.Thread(target=self.gauge.show, args=(gv[1],), daemon=True).start()
 
     def tick_light(self):
-        if not self.light or time.time() - self.light_t < self.cfg["light"].get("interval", 2):
+        if time.time() - self.light_t < self.cfg["light"].get("interval", 2):
             return
         self.light_t = time.time()
-        try:
-            lux = self.light.lux()
+        lux = None
+        if self.light:
+            try:
+                lux = self.light.lux()
+            except Exception as e:
+                if self.lux is not None or not self.light_failed:          # once per failure, not every reading
+                    print(f"[light] {e!r}", flush=True)
+                self.light_failed = True
+        if lux is None:
+            self.lux = None
+        else:
+            self.light_failed = False
             self.lux = lux if self.lux is None else self.lux * 0.6 + lux * 0.4
-            if self.st["display"]["auto_brightness"]:
-                self.set_brightness(lux_to_brightness(self.lux, self.cfg, self.st["display"]))
-        except Exception as e:
-            print(f"[light] {e!r}", flush=True)
+        if self.st["display"]["auto_brightness"]:
+            # no sensor or no reading: full brightness, so the screen is never stuck dim
+            self.set_brightness(100 if self.lux is None else lux_to_brightness(self.lux, self.cfg, self.st["display"]))
 
     def tick_events(self, now):
         # hourly tone
