@@ -145,7 +145,7 @@ footer{color:var(--faint);font-size:12px;text-align:center;padding:30px 0 calc(4
 </header>
 
 <nav><div class="wrap" id="tabs">
-  <a href="#screens">Screens</a><a href="#display">Display</a><a href="#gauge">Gauge</a><a href="#sound">Sound</a>
+  <a href="#screens">Screens</a><a href="#display">Display</a><a href="#gauge">Gauge</a><a href="#radar">Radar</a><a href="#sound">Sound</a>
   <a href="#tickers">Tickers</a><a href="#photos">Photos</a><a href="#more">More</a>
 </div></nav>
 
@@ -186,6 +186,20 @@ footer{color:var(--faint);font-size:12px;text-align:center;padding:30px 0 calc(4
     <p class="hint" style="margin-top:14px">What the needle shows:</p>
     <div class="card" id="metricList"></div>
     <div class="btns"><button class="btn" id="sweep">Sweep the needle</button></div>
+  </section>
+
+  <section id="radar">
+    <h2>Radar</h2>
+    <div class="card">
+      <div class="row"><div class="grow"><div class="name">Centre on home</div><div class="desc" id="radarHome"></div></div>
+        <label class="sw"><input type="checkbox" id="radarHomeOn"><span></span></label></div>
+      <div class="slider" id="radarSpot"><div class="top"><span>Centre</span><span class="val" id="radarSpotVal"></span></div>
+        <input type="text" id="radarLatLon" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="24.9576, 46.6988" aria-label="Latitude, longitude">
+        <div class="desc" style="margin-top:6px">Latitude, longitude. In Google Maps, press and hold a spot and copy the numbers it shows.</div></div>
+      <div class="row"><div class="grow"><div class="name">Range</div><div class="desc">From the centre to the outer ring</div></div>
+        <select id="radarRange" aria-label="Radar range"></select></div>
+    </div>
+    <div class="btns"><button class="btn" id="radarShow">Show the radar</button></div>
   </section>
 
   <section id="sound">
@@ -231,7 +245,7 @@ footer{color:var(--faint);font-size:12px;text-align:center;padding:30px 0 calc(4
     <section style="padding-top:22px">
       <h2>Location</h2>
       <div class="card"><div class="row"><div class="grow"><div class="name" id="locName"></div><div class="desc" id="locLine"></div></div></div></div>
-      <p class="hint" style="margin-top:10px">Prayer times, weather, sun, moon and radar use this. Change it in config.toml on the Pi.</p>
+      <p class="hint" style="margin-top:10px">Prayer times, weather, sun and moon use this, and the radar unless you give it its own centre. Change it in config.toml on the Pi.</p>
       <div class="btns"><button class="btn" id="refresh">Refresh prices and weather now</button></div>
     </section>
     <section style="padding-top:22px">
@@ -258,7 +272,8 @@ const h = (tag, attrs = {}, ...kids) => {
   for (const k of kids.flat()) if (k != null) e.append(k.nodeType ? k : document.createTextNode(k));
   return e;
 };
-let S, CAT, ST = {}, LOC = {};
+let S, CAT, ST = {}, LOC = {}, RADAR_NM = 20;
+const RANGES = [5, 10, 15, 20, 30, 40, 50, 75, 100];
 const STEPS = [3, 5, 8, 10, 12, 15, 20, 30, 45, 60, 90, 120, 180, 300, 600];
 const ZONES = ["Asia/Riyadh","Asia/Dubai","Asia/Kuwait","Asia/Qatar","Asia/Bahrain","Africa/Cairo","Asia/Amman","Europe/Istanbul",
   "Europe/London","Europe/Paris","Europe/Berlin","Europe/Madrid","Europe/Moscow","Asia/Karachi","Asia/Kolkata","Asia/Singapore",
@@ -371,7 +386,7 @@ function wireDisplay() {
 }
 
 /* ---------- gauge ---------- */
-function fmtRange(m) { return m.id === "off" ? "Needle rests at the left" : `${m.min} to ${m.max}${m.unit ? " " + m.unit : ""}`; }
+function fmtRange(m) { return m.id === "off" ? "Needle at rest" : `${m.min} to ${m.max}${m.unit ? " " + m.unit : ""}`; }
 function renderGauge() {
   $("#dialLight").checked = S.gauge.backlight;
   const box = $("#metricList"); box.replaceChildren();
@@ -384,6 +399,41 @@ function renderGauge() {
       h("div", {class: "grow"}, h("div", {class: "name"}, m.name), h("div", {class: "desc"}, fmtRange(m))),
       h("span", {class: "val", id: on ? "gaugeLive" : null}, live)));
   }
+}
+
+/* ---------- radar ---------- */
+const fmtLL = (lat, lon) => `${(+lat).toFixed(4)}, ${(+lon).toFixed(4)}`;
+function renderRadar() {
+  const r = S.radar, nm = r.radius_nm || RADAR_NM;
+  $("#radarHomeOn").checked = r.home;
+  $("#radarHome").textContent = LOC.lat != null ? `${LOC.name || "Home"} · ${fmtLL(LOC.lat, LOC.lon)}` : "The location in config.toml";
+  $("#radarSpot").style.display = r.home ? "none" : "";
+  if (document.activeElement !== $("#radarLatLon")) $("#radarLatLon").value = r.lat != null ? fmtLL(r.lat, r.lon) : "";
+  $("#radarSpotVal").textContent = r.home ? "" : r.lat != null ? "in use" : "not set";
+  const opts = RANGES.includes(nm) ? RANGES : [...RANGES, nm].sort((a, b) => a - b);
+  $("#radarRange").replaceChildren(...opts.map(v => h("option", {value: v, selected: v === nm}, `${v} nm · ${Math.round(v * 1.852)} km`)));
+}
+function parseLL(text) {
+  const m = String(text).trim().match(/^(-?\d+(?:\.\d+)?)\s*[,\s]\s*(-?\d+(?:\.\d+)?)$/);
+  if (!m) return null;
+  const lat = +m[1], lon = +m[2];
+  return Math.abs(lat) <= 90 && Math.abs(lon) <= 180 ? {lat, lon} : null;
+}
+function wireRadar() {
+  $("#radarHomeOn").onchange = e => {
+    if (e.target.checked) save({radar: {home: true}}, 0);
+    else if (S.radar.lat != null) save({radar: {home: false}}, 0);
+    else { S.radar.home = false; renderRadar(); $("#radarLatLon").focus(); return; }   // saved once a centre is typed
+    renderRadar();
+  };
+  $("#radarLatLon").onchange = e => {
+    const ll = parseLL(e.target.value);
+    if (!ll) return toast("Type it as latitude, longitude", true);
+    save({radar: {home: false, lat: ll.lat, lon: ll.lon}}, 0);
+    e.target.blur(); renderRadar();
+  };
+  $("#radarRange").onchange = e => { save({radar: {radius_nm: +e.target.value}}, 0); renderRadar(); };
+  $("#radarShow").onclick = () => { if (!ST.radar) act("radar"); toast("Radar on the screen"); };
 }
 
 /* ---------- sound ---------- */
@@ -546,13 +596,13 @@ async function poll() {
 }
 
 /* ---------- start ---------- */
-function renderAll() { renderScreens(); renderDisplay(); renderGauge(); renderSound(); draft = S.tickers.map(t => ({...t})); renderTickers(); renderMore(); }
+function renderAll() { renderScreens(); renderDisplay(); renderGauge(); renderRadar(); renderSound(); draft = S.tickers.map(t => ({...t})); renderTickers(); renderMore(); }
 async function start() {
   try {
     const st = await api("/api/state");
-    S = st.settings; CAT = st.catalogue; ST = st.status; LOC = st.location || {};
+    S = st.settings; CAT = st.catalogue; ST = st.status; LOC = st.location || {}; RADAR_NM = st.radar_default_nm || 20;
   } catch (e) { $("#now").textContent = "Display not reachable: " + e.message; return; }
-  renderAll(); wireDisplay(); wireSound();
+  renderAll(); wireDisplay(); wireRadar(); wireSound();
   document.querySelectorAll("[data-act]").forEach(b => b.onclick = () => act(b.dataset.act));
   $("#dialLight").onchange = e => save({gauge: {backlight: e.target.checked}});
   $("#sweep").onclick = () => act("gauge_test");

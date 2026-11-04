@@ -122,6 +122,12 @@ DEFAULTS = {
         {"name": "TOKYO",  "tz": "Asia/Tokyo"},
     ],
     "countdown": {"label": "HOLIDAY", "date": "2027-01-01"},
+    "radar": {
+        "home": True,              # centre on [location] in config.toml
+        "lat": None,               # otherwise here
+        "lon": None,
+        "radius_nm": None,         # None = [radar] radius_nm in config.toml
+    },
 }
 
 
@@ -238,6 +244,10 @@ class Settings:
             cd = d.get("countdown") or {}
             d["countdown"] = {"label": str(cd.get("label", ""))[:16].upper(),
                               "date": cd.get("date") if re.match(r"^\d{4}-\d{2}-\d{2}$", str(cd.get("date", ""))) else "2027-01-01"}
+            r = d.get("radar") or {}
+            lat, lon = _num(r.get("lat"), None, -90, 90), _num(r.get("lon"), None, -180, 180)
+            d["radar"] = {"home": bool(r.get("home", True)) or lat is None or lon is None, "lat": lat, "lon": lon,
+                          "radius_nm": None if r.get("radius_nm") is None else _num(r.get("radius_nm"), None, 2, 150)}
             self._d = d
             self.save()
             self.version += 1

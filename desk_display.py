@@ -346,6 +346,14 @@ OCCASIONS_G = [(2, 22, "FOUNDING DAY", "يوم التأسيس"), (9, 23, "NATION
 
 
 # --------------------------------------------------------------------------- shared state
+def radar_area(cfg, st):
+    """(lat, lon, radius_nm) for the radar: the web page's choice, else config.toml."""
+    r, loc = st.get("radar") or {}, cfg["location"]
+    custom = not r.get("home", True) and r.get("lat") is not None and r.get("lon") is not None
+    lat, lon = (r["lat"], r["lon"]) if custom else (loc["lat"], loc["lon"])
+    return float(lat), float(lon), float(r.get("radius_nm") or cfg["radar"]["radius_nm"])
+
+
 class Data:
     def __init__(self, cfg, settings, tz):
         self.cfg, self.settings, self.tz = cfg, settings, tz
@@ -359,14 +367,26 @@ class Data:
         self.new_plane = threading.Event()               # set when an aircraft enters the inner ring
         self.radar_on = threading.Event()
         self.stop = threading.Event()
+        self.area = radar_area(cfg, settings.get())     # (lat, lon, radius_nm) the radar covers
+
+    def set_area(self, area):
+        """Move or resize the radar: aircraft and trails from the old area are dropped, the new one is fetched now."""
+        if area == self.area:
+            return
+        with self.lock:
+            self.area = area
+            self.planes.clear()
+            self.trails.clear()
+            self.planes_ok = False
+            self.kick.add("planes")
 
     def to_nm(self, lat, lon):
-        loc = self.cfg["location"]
-        return ((lon - loc["lon"]) * 60 * math.cos(math.radians(loc["lat"])), (lat - loc["lat"]) * 60)
+        lat0, lon0, _ = self.area
+        return ((lon - lon0) * 60 * math.cos(math.radians(lat0)), (lat - lat0) * 60)
 
     def ingest_planes(self, acs):
         now, seen = time.time(), set()
-        inner = self.cfg["radar"]["radius_nm"] / 3
+        inner = self.area[2] / 3
         with self.lock:
             for a in acs:
                 if "lat" not in a or "lon" not in a or a.get("alt_baro") == "ground":
@@ -391,7 +411,7 @@ class Data:
             self.planes_ok = True
 
     def plane_count(self):
-        rad = self.cfg["radar"]["radius_nm"]
+        rad = self.area[2]
         with self.lock:
             return sum(1 for p in self.planes.values() if math.hypot(*self.to_nm(p["lat"], p["lon"])) <= rad)
 
@@ -450,7 +470,8 @@ class Data:
                                     self.occ_cache = (None, [])
                         next_run[job] = now + 43200
                     elif job == "planes" and self.radar_on.is_set():
-                        self.ingest_planes(fetch_planes(loc["lat"], loc["lon"], cfg["radar"]["radius_nm"] * 1.15))
+                        lat, lon, rad = self.area
+                        self.ingest_planes(fetch_planes(lat, lon, rad * 1.15))
                         fails["planes"] = 0
                         next_run[job] = now + cfg["radar"]["poll_seconds"]
                 except Exception as e:
@@ -1045,7 +1066,7 @@ def fmt_alt(alt):
 
 def slide_radar(app, now, arg=None):
     cfg, data = app.cfg, app.data
-    R, cx, cy, rad = 168, 180, 180, cfg["radar"]["radius_nm"]
+    R, cx, cy, rad = 168, 180, 180, data.area[2]
     scale = R / rad
     c = Canvas()
     for f in (1 / 3, 2 / 3, 1):
@@ -1439,6 +1460,7 @@ class App:
             with self.data.lock:
                 self.data.kick.add("quotes")                     # fetch new tickers now, not in a minute
         self.rebuild_slides()
+        self.data.set_area(radar_area(self.cfg, self.st))
         if not self.st["display"]["auto_brightness"]:
             self.set_brightness(self.st["display"]["brightness"])
         self.gauge.backlight(self.st["gauge"]["backlight"] and not self.asleep)
@@ -1772,8 +1794,7 @@ def demo_fill(app):
     for off in (0, 1):
         dd = day + timedelta(days=off)
         d.prayer[dd.isoformat()] = {n: datetime(dd.year, dd.month, dd.day, h, m, tzinfo=tz) for n, (h, m) in times.items()}
-    loc = app.cfg["location"]
-    rad = app.cfg["radar"]["radius_nm"]
+    lat0, lon0, rad = d.area
     names = ["SVA1043", "FDB512", "UAE837", "SVA2217", "KNE334", "ETD401", "THY772", "SVA6", "QTR1129"]
     t = time.time()
     for i, nm in enumerate(names):
@@ -1783,7 +1804,7 @@ def demo_fill(app):
         a = math.radians(trk)
         trail = [(x - gs / 3600 * 3 * k * math.sin(a), y - gs / 3600 * 3 * k * math.cos(a)) for k in range(7, 0, -1)]
         h = f"{i:06x}"
-        lat, lon = loc["lat"] + y / 60, loc["lon"] + x / (60 * math.cos(math.radians(loc["lat"])))
+        lat, lon = lat0 + y / 60, lon0 + x / (60 * math.cos(math.radians(lat0)))
         d.planes[h] = {"lat": lat, "lon": lon, "track": trk, "gs": gs, "alt": random.choice([3200, 9800, 24000, 35000, 38000]),
                        "name": nm, "type": "", "t": t, "inner": False}
         d.trails[h] = deque(trail + [(x, y)], maxlen=8)

@@ -18,7 +18,7 @@ shuffle = true
 method = 4                         # 4 = Umm al-Qura (Makkah), the official Saudi calendar
 
 [radar]
-radius_nm = 20
+radius_nm = 20                     # until a range is picked on the web page (Radar)
 poll_seconds = 3
 timeout_minutes = 0                # 0 = stay on until Button B is pressed again
 

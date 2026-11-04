@@ -79,6 +79,7 @@ Then open the control page on your phone (same Wi-Fi): the address is printed by
 | Screens | Switch each screen on or off, change the order (arrows), set how long each stays; tap a name to show it now |
 | Display | Automatic brightness (light sensor, with darkest/brightest-room levels) or a fixed level; night sleep times; 24-hour clock; start-up QR code |
 | Gauge | Dial light on/off; what the needle shows (16 choices); sweep test |
+| Radar | Centre it on home or any spot (latitude, longitude), and set the range from 5 to 100 nm |
 | Sound | Mute, volume, quiet hours, which events make a sound (each with a Play button), share-price alert threshold |
 | Tickers | Up to 8 symbols with labels, in order; one slide each. Tadawul codes end in `.SR` (2222.SR Aramco, 1120.SR Al Rajhi, 7010.SR STC); also BTC-USD, GC=F (gold), EURSAR=X |
 | Photos | Upload from the phone (resized to 1440 px on the phone first), delete, tap one to show it now |

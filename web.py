@@ -165,7 +165,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, (HERE / "web_ui.html").read_bytes(), "text/html; charset=utf-8")
             if u.path == "/api/state":
                 return self._send(200, {"settings": self.app.settings.get(), "catalogue": self.app.settings.catalogue(),
-                                        "status": self.app.status(), "location": self.app.cfg.get("location", {})})
+                                        "status": self.app.status(), "location": self.app.cfg.get("location", {}),
+                                        "radar_default_nm": self.app.cfg["radar"]["radius_nm"]})
             if u.path == "/api/status":
                 return self._send(200, self.app.status())
             if u.path == "/api/screen.png":
