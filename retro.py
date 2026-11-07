@@ -40,6 +40,7 @@ _GLYPHS = {
     ".": "     |     |     |     |     |     |  #  ", ":": "     |  #  |  #  |     |  #  |  #  |     ",
     "-": "     |     |     | ### |     |     |     ", "/": "    #|    #|   # |  #  | #   |#    |#    ",
     "_": "#####|#####|#####|#####|#####|#####|#####", " ": "     |     |     |     |     |     |     ",
+    "°": " ##  |#  # |#  # | ##  |     |     |     ", "!": "  #  |  #  |  #  |  #  |  #  |     |  #  ",
 }
 _FONT = {ch: np.array([[c == "#" for c in row] for row in g.split("|")], bool) for ch, g in _GLYPHS.items()}
 
@@ -123,6 +124,42 @@ def power_on(im, e):
         return crt(out)
     k = 0.72 + 0.28 * random.random() if e < 0.7 else 1.0     # then a short flicker
     return crt(Image.eval(im, lambda v: int(v * k)))
+
+
+# --------------------------------------------------------------------------- CPU temperature alarm
+_hazard = {}
+
+
+def _hazard_field():
+    """Angle and radius of every pixel, for the turning hazard stripes round the rim."""
+    if not _hazard:
+        yy, xx = np.mgrid[0:S, 0:S] + 0.5
+        _hazard["a"] = (np.arctan2(yy - C, xx - C) / (2 * np.pi)) % 1.0
+        _hazard["r"] = np.hypot(xx - C, yy - C)
+    return _hazard["a"], _hazard["r"]
+
+
+def alarm(t, temp, limit, test=False):
+    """The overheat warning, t seconds in: a pulsing red screen inside a turning yellow-and-black ring."""
+    a, r = _hazard_field()
+    pulse = 0.5 + 0.5 * math.cos(t * 2 * math.pi * 1.4)              # about 1.4 flashes a second
+    bg = np.array([28 + 130 * pulse, 0, 4 * pulse])
+    img = np.empty((S, S, 3), np.float32)
+    img[:] = bg
+    band = (r > 146) & (r < 181)
+    stripe = ((a * 18 + (r - 146) / 26 - t * 0.6) % 1.0) < 0.5
+    img[band & stripe] = (255, 196, 0)
+    img[band & ~stripe] = (14, 10, 4)
+    edge = (np.abs(r - 146) < 2) | (np.abs(r - 181) < 2)
+    img[edge] = (255, 230, 120)
+    im = Image.fromarray(img.astype(np.uint8), "RGB")
+    if int(t * 2.8) % 2 == 0:
+        put_text(im, C, 74, "WARNING!", 4, (255, 230, 120), "m")
+    put_text(im, C, 118, "CPU TEMP", 3, (255, 255, 255), "m")
+    put_text(im, C, 158, f"{temp:.0f}°C", 8, (255, 255, 255), "m")
+    put_text(im, C, 230, "TEST" if test else f"LIMIT {limit}°C", 2, (255, 200, 170), "m")
+    put_text(im, C, 258, "ANY KEY: SNOOZE", 2, (255, 200, 170), "m")
+    return crt(im)
 
 
 # --------------------------------------------------------------------------- start-up sequence

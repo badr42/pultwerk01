@@ -77,7 +77,7 @@ Then open the control page on your phone (same Wi-Fi): the address is printed by
 |---|---|
 | Top | Live picture of the round screen, Prev / Next / Radar / Sleep |
 | Screens | Switch each screen on or off, change the order (arrows), set how long each stays; tap a name to show it now |
-| Display | Automatic brightness (light sensor, with darkest/brightest-room levels) or a fixed level; night sleep times; sleep animation (off, 10 or 30 min, all night) and its brightness; 24-hour clock; start-up QR code; retro start-up (with a Play button); announcements that show their screen |
+| Display | Automatic brightness (light sensor, with darkest/brightest-room levels) or a fixed level; night sleep times; sleep animation (off, 10 or 30 min, all night) and its brightness; 24-hour clock; start-up QR code; retro start-up (with a Play button); announcements that show their screen; CPU temperature alarm (limit, Test button) |
 | Gauge | Dial light on/off; what the needle shows (16 choices); sweep test |
 | Radar | Centre it on home or any spot (latitude, longitude), and set the range from 5 to 100 nm |
 | Retro | Which animations the Retro screen may pick (each with a Play button), CRT look on or off |
@@ -98,6 +98,8 @@ Photos · Clock · Date · Month calendar · World clocks · Day/month/year prog
 
 **Orbit:** a game for the two keys. On its screen a demo plays by itself; press B to start. Your ship runs round the ring and rocks fly out from the middle: hold A to move anticlockwise and B to move clockwise. Every rock that gets past is a point, it speeds up every 15 s (the needle shows how fast), and one hit ends it. After a game, B plays again and A moves on. Holding both keys for 3 s quits. While you play, the screens stop rotating and announcements wait. The best score is kept in `orbit.json` next to `settings.json`.
 
+**CPU temperature alarm:** the CPU temperature is checked every 5 s. When two readings in a row reach the limit (80 °C unless changed under Display), a flashing red warning screen with a turning hazard ring shows the temperature and a siren sounds every 30 s, also at night and in quiet hours (not when muted). Any key snoozes it for 10 minutes, unless it gets 3 °C hotter. It ends by itself once the CPU is 5 °C under the limit. Test shows it for 10 s.
+
 **Announcements:** when the hour, a prayer time or a price move makes its sound, its screen (clock, that prayer, that ticker) also comes up for 15 s, even when the sound is muted or in quiet hours. Nothing happens for an announcement that is switched off under Sound, while the display sleeps, on the radar, or within a minute of a key press or a change on the page. NEXT closes it early.
 
 Hijri dates and occasions use the Umm al-Qura calendar from aladhan.com (an offline estimate is shown with ≈ until it answers); the real start of Ramadan and the Eids can still move by a day with the moon sighting. Weather, UV, forecast and air quality come from Open-Meteo, prices from Yahoo Finance, aircraft from airplanes.live. None need an account.
@@ -107,6 +109,7 @@ Hijri dates and occasions use the Umm al-Qura calendar from aladhan.com (an offl
 - **A (NEXT)**: next screen · hold 1.5 s = sleep/wake · in radar = leave radar · skips the start-up · closes an announcement
 - **B (RADAR)**: radar on/off (on release)
 - **A and B together for 3 s**: a retro animation, also from sleep; again for another one
+- **CPU alarm showing**: any key snoozes it for 10 minutes
 - **On the Orbit screen**: B starts a game; while playing, A and B steer (both for 3 s quits)
 
 ## Wiring (BCM numbers, header pins in brackets)

@@ -183,6 +183,10 @@ footer{color:var(--faint);font-size:12px;text-align:center;padding:30px 0 calc(4
         <label class="sw"><input type="checkbox" id="bootAnim"><span></span></label></div>
       <div class="row"><div class="grow"><div class="name">Announcements show their screen</div><div class="desc">The hour, a prayer time or a price move brings up its screen for 15 s. Waits if you used the display in the last minute.</div></div>
         <label class="sw"><input type="checkbox" id="announce"><span></span></label></div>
+      <div class="row"><div class="grow"><div class="name">CPU temperature alarm</div><div class="desc" id="cpuAlarmDesc">A flashing warning screen and a siren when the Pi gets this hot, even at night. Any key snoozes it for 10 min.</div></div>
+        <button class="btn" style="padding:7px 12px" id="cpuAlarmTest">Test</button>
+        <select id="cpuAlarmC" aria-label="Alarm temperature"><option value="70">70 °C</option><option value="75">75 °C</option><option value="80">80 °C</option><option value="85">85 °C</option></select>
+        <label class="sw"><input type="checkbox" id="cpuAlarm"><span></span></label></div>
     </div>
   </section>
 
@@ -340,7 +344,7 @@ function toast(msg, err) {
   const t = $("#toast"); t.textContent = msg; t.className = "toast show" + (err ? " err" : "");
   clearTimeout(toastT); toastT = setTimeout(() => t.className = "toast" + (err ? " err" : ""), err ? 3500 : 1200);
 }
-const screenName = id => id === "radar" ? "Radar" : ((CAT.screens.find(s => s.id === id) || {}).name || id);
+const screenName = id => id === "radar" ? "Radar" : id === "alarm" ? "CPU alarm" : ((CAT.screens.find(s => s.id === id) || {}).name || id);
 
 /* ---------- screens ---------- */
 function renderScreens() {
@@ -390,6 +394,7 @@ function renderDisplay() {
   $("#clock24").checked = d.clock_24h; $("#bootInfo").checked = d.boot_info;
   $("#bootAnim").checked = d.boot_animation; $("#announce").checked = d.announce_screens;
   $("#sleepAnim").value = d.sleep_animation; $("#sleepBrightBox").style.display = d.sleep_animation === "off" ? "none" : "";
+  $("#cpuAlarm").checked = d.cpu_alarm; $("#cpuAlarmC").value = String(d.cpu_alarm_c);
   $("#sleepBright").value = d.sleep_brightness; $("#sleepBrightVal").textContent = d.sleep_brightness + " %";
 }
 function wireDisplay() {
@@ -408,6 +413,9 @@ function wireDisplay() {
   $("#bootInfo").onchange = e => save({display: {boot_info: e.target.checked}});
   $("#bootAnim").onchange = e => save({display: {boot_animation: e.target.checked}});
   $("#announce").onchange = e => save({display: {announce_screens: e.target.checked}});
+  $("#cpuAlarm").onchange = e => save({display: {cpu_alarm: e.target.checked}});
+  $("#cpuAlarmC").onchange = e => save({display: {cpu_alarm_c: +e.target.value}});
+  $("#cpuAlarmTest").onclick = () => { act("alarm_test"); toast("Showing the alarm for 10 s"); };
   $("#bootPlay").onclick = () => { act("boot"); toast("Playing the start-up"); };
   $("#sleepAnim").onchange = e => { save({display: {sleep_animation: e.target.value}}); renderDisplay(); };
   $("#sleepBright").oninput = e => { $("#sleepBrightVal").textContent = e.target.value + " %"; save({display: {sleep_brightness: +e.target.value}}, 250); };

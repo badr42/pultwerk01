@@ -77,6 +77,7 @@ SOUND_EVENTS = [
     {"id": "price",  "name": "Share price move",             "desc": "Chime when a ticker moves past the threshold"},
     {"id": "plane",  "name": "Aircraft overhead",            "desc": "Tick when a new aircraft enters the inner ring"},
     {"id": "boot",   "name": "Start-up",                     "desc": "A chiptune when the display starts, also in quiet hours"},
+    {"id": "alarm",  "name": "CPU temperature alarm",        "desc": "A siren with the overheat screen, also in quiet hours"},
     {"id": "game",   "name": "Game sounds",                  "desc": "Start, speed-up and game over in Orbit, also in quiet hours"},
 ]
 
@@ -121,7 +122,9 @@ DEFAULTS = {
         "wake_at": "06:30",
         "boot_info": True,         # show the System screen (QR code to this page) for 20 s after start-up
         "boot_animation": True,    # the retro start-up sequence (retro.py) every time the app starts
-        "announce_screens": True,  # the hour, a prayer or a price move also brings up its screen for a while
+        "announce_screens": True,
+        "cpu_alarm": True,         # a warning screen (and siren) when the CPU gets too hot
+        "cpu_alarm_c": 80,         # at this temperature; the Pi itself slows down from 80 °C  # the hour, a prayer or a price move also brings up its screen for a while
         "sleep_animation": "10",   # while asleep: "off", "10" or "30" minutes of sleepy pixel art, or "night"
         "sleep_brightness": 8,     # backlight % meanwhile
     },
@@ -134,7 +137,7 @@ DEFAULTS = {
         "volume": 60,              # 1-100
         "quiet_from": "22:00",
         "quiet_to": "07:00",
-        "events": {"key": True, "hour": False, "prayer": True, "price": True, "plane": False, "boot": True, "game": True},
+        "events": {"key": True, "hour": False, "prayer": True, "price": True, "plane": False, "boot": True, "game": True, "alarm": True},
         "price_threshold_pct": 2.0,
     },
     "worldclock": [
@@ -253,9 +256,10 @@ class Settings:
             disp["sleep_at"] = _hm(disp.get("sleep_at"), old.get("sleep_at", "00:30"))
             if disp.get("sleep_animation") not in SLEEP_ANIMATION_TIMES:
                 disp["sleep_animation"] = old.get("sleep_animation", "10")
+            disp["cpu_alarm_c"] = _num(disp.get("cpu_alarm_c"), 80, 60, 90, int)
             disp["sleep_brightness"] = _num(disp.get("sleep_brightness"), 8, 1, 50, int)
             disp["wake_at"] = _hm(disp.get("wake_at"), old.get("wake_at", "06:30"))
-            for k in ("auto_brightness", "clock_24h", "night_enabled", "boot_info", "boot_animation", "announce_screens"):
+            for k in ("auto_brightness", "clock_24h", "night_enabled", "boot_info", "boot_animation", "announce_screens", "cpu_alarm"):
                 disp[k] = bool(disp.get(k))
             d["gauge"]["backlight"] = bool(d["gauge"].get("backlight"))
             if d["gauge"].get("metric") not in {m["id"] for m in GAUGE_METRICS}:

@@ -307,6 +307,14 @@ def fetch_planes(lat, lon, radius):
     raise last
 
 
+def cpu_temp():
+    """The Pi's CPU temperature in °C, or None where there is no sensor (a Mac)."""
+    try:
+        return int(open("/sys/class/thermal/thermal_zone0/temp").read()) / 1000
+    except Exception:
+        return None
+
+
 # --------------------------------------------------------------------------- astronomy (offline)
 def moon_phase(now_utc):
     """0 = new, 0.25 = first quarter, 0.5 = full, 0.75 = last quarter."""
@@ -839,11 +847,8 @@ def slide_system(app, now, arg=None):
         c.text(180, 140, "NO NETWORK" if not url else url.replace("http://", ""), "Light", 16, DIM, track=3)
     c.text(180, 246, f"{app.ip}:{port}" if app.ip else "", "Light", 17, FG)
     c.text(180, 270, f"{socket.gethostname()}.local:{port}".upper(), "Light", 11, DIM, track=2)
-    try:
-        temp = int(open("/sys/class/thermal/thermal_zone0/temp").read()) / 1000
-        vit = f"CPU {temp:.0f}°"
-    except Exception:
-        vit = ""
+    temp = cpu_temp()
+    vit = f"CPU {temp:.0f}°" if temp is not None else ""
     up = int(time.time() - START)
     vit += f"   UP {up // 86400}D {up % 86400 // 3600}H" if up >= 86400 else f"   UP {up // 3600}H {up % 3600 // 60}M"
     c.text(180, 298, vit.strip(), "Light", 12, FAINT, track=3)
@@ -1178,6 +1183,10 @@ ANNOUNCE_SECONDS = 15                  # how long an announcement's screen stays
 RETRO_FPS = 15                         # frame rate asked for while something moves; the Pi manages about 10-15
 SLEEP_FPS = 6                          # sleep animations move slowly
 SLEEP_ROTATE_S = 120                   # each sleep animation plays this long, then the next
+ALARM_EVERY_S = 5                      # how often the CPU temperature is checked
+ALARM_SIREN_S = 30                     # the siren repeats this often while the alarm shows
+ALARM_SNOOZE_S = 600                   # a key hides the alarm this long (unless it gets 3 °C hotter)
+ALARM_CLEAR_C = 5                      # the alarm ends this far under the limit
 SLEEP_PREVIEW_S = 5                    # and this long each in the preview from the page
 
 
@@ -1436,6 +1445,7 @@ class Sound:
                    (1047, 0.08, 0.05, "chip"), (784, 0.07, 0, "chip"), (1047, 0.38, 0, "chip")],
         "game_start": [(523, 0.05, 0, "chip"), (659, 0.05, 0, "chip"), (784, 0.05, 0, "chip"), (1047, 0.12, 0, "chip")],
         "game_level": [(784, 0.05, 0.02, "chip"), (1175, 0.08, 0, "chip")],
+        "alarm":      [(880, 0.16, 0, "chip"), (622, 0.16, 0, "chip")] * 3,
         "game_over":  [(659, 0.10, 0, "chip"), (523, 0.10, 0, "chip"), (415, 0.10, 0, "chip"), (330, 0.32, 0, "chip")],
     }
 
@@ -1605,6 +1615,8 @@ class App:
         self.retro_on_wake = False
         self.game = orbit.Orbit(best=self.load_best())         # the Orbit screen; its demo runs until B is pressed
         self.game_t, self.game_keys, self.game_taps = 0.0, {"A": False, "B": False}, set()
+        self.temp_fn = cpu_temp
+        self.cpu_c, self.alarm, self.alarm_check, self.alarm_hits = None, None, 0.0, 0
         self.lock = threading.Lock()
         self.rebuild_slides()
 
@@ -1695,6 +1707,9 @@ class App:
             return
 
     def render(self, now):
+        if self.alarm_shown() and not (self.wifi and self.wifi.active):
+            al = self.alarm
+            return retro.alarm(time.time() - al["t0"], al["temp"], self.st["display"].get("cpu_alarm_c", 80), al["test"])
         if self.boot_seq:
             try:
                 return self.boot_seq.frame(time.monotonic() - self.boot_t0)
@@ -1762,7 +1777,7 @@ class App:
 
     def animating(self):
         """True while the screen needs fast frames."""
-        if self.boot_seq:
+        if self.boot_seq or self.alarm_shown():
             return True
         if self.radar or self.boot_until or (self.wifi and self.wifi.active):
             return False
@@ -1862,6 +1877,72 @@ class App:
             self.slide_t += time.time() - self.takeover["t0"]          # the rotation carries on where it was
             self.takeover = None
 
+    # -- CPU temperature alarm
+    def alarm_shown(self):
+        al = self.alarm
+        return bool(al) and time.time() >= al["snooze_until"]
+
+    def tick_alarm(self):
+        """Check the CPU every few seconds; two readings over the limit in a row raise the alarm."""
+        now = time.time()
+        al = self.alarm
+        if al and al["test"]:
+            if now > al["until"]:
+                self.alarm = None
+                self.last_crc = None
+            return
+        if now - self.alarm_check < ALARM_EVERY_S:
+            if self.alarm_shown() and now - al["siren"] > ALARM_SIREN_S:
+                self.alarm_siren()
+            return
+        self.alarm_check = now
+        temp = self.temp_fn()
+        self.cpu_c = temp
+        d = self.st["display"]
+        limit = d.get("cpu_alarm_c", 80)
+        if temp is None or not d.get("cpu_alarm", True):
+            self.alarm, self.alarm_hits = None, 0
+            return
+        if al:
+            al["temp"] = temp
+            if temp < limit - ALARM_CLEAR_C:
+                print(f"[alarm] CPU back to {temp:.1f} °C", flush=True)
+                self.alarm, self.alarm_hits = None, 0
+                self.last_crc = None
+                self.slide_t = now
+            elif not self.alarm_shown() and temp >= al["ack_temp"] + 3:
+                al["snooze_until"] = 0                                    # hotter still: back on screen now
+                self.alarm_siren()
+            elif self.alarm_shown() and now - al["siren"] > ALARM_SIREN_S:
+                self.alarm_siren()
+            return
+        self.alarm_hits = self.alarm_hits + 1 if temp >= limit else 0
+        if self.alarm_hits >= 2:
+            print(f"[alarm] CPU at {temp:.1f} °C, limit {limit} °C", flush=True)
+            self.alarm = {"temp": temp, "t0": now, "snooze_until": 0, "ack_temp": temp, "siren": 0, "test": False}
+            self.alarm_siren()
+
+    def alarm_siren(self):
+        self.alarm["siren"] = time.time()
+        s = self.st["sound"]
+        if self.sound and not s["muted"] and s["events"].get("alarm"):     # also in quiet hours
+            self.sound.play("alarm", s["volume"])
+
+    def alarm_test(self):
+        temp = self.temp_fn()
+        limit = self.st["display"].get("cpu_alarm_c", 80)
+        self.alarm = {"temp": limit + 3 if temp is None else temp, "t0": time.time(), "snooze_until": 0,
+                      "ack_temp": 0, "siren": 0, "test": True, "until": time.time() + 10}
+        self.alarm_siren()
+
+    def alarm_snooze(self):
+        al = self.alarm
+        if al["test"]:
+            self.alarm = None
+        else:
+            al["snooze_until"], al["ack_temp"] = time.time() + ALARM_SNOOZE_S, al["temp"]
+        self.last_crc = None
+
     # -- the Orbit game
     def best_path(self):
         return Path(self.settings.path).with_name("orbit.json")
@@ -1883,7 +1964,7 @@ class App:
     def on_game(self):
         """The Orbit screen is up, not covered by the radar, an announcement or the start-up."""
         return (not self.radar and not self.takeover and not self.boot_seq and not self.boot_until
-                and not (self.wifi and self.wifi.active) and 0 <= self.idx < len(self.slides)
+                and not self.alarm_shown() and not (self.wifi and self.wifi.active) and 0 <= self.idx < len(self.slides)
                 and self.slides[self.idx][0] == "orbit")
 
     def game_sound(self, name):
@@ -1960,6 +2041,13 @@ class App:
             if down and self.game.state == "play":
                 self.game_taps.add(ev[0])
             return False
+        if self.alarm_shown() and ev in ("A_short", "B", "A_long", "AB_long"):
+            self.beep("key", now)
+            self.alarm_snooze()
+            return True
+        if ev == "alarm_test":
+            self.alarm_test()
+            return True
         if self.on_game() and not self.asleep:
             r = self.game_event(ev)
             if r is not None:
@@ -2129,6 +2217,8 @@ class App:
             self.events.put(f"retro:{arg or ''}")
         elif name == "boot":
             self.events.put("boot")
+        elif name == "alarm_test":
+            self.events.put("alarm_test")
         elif name == "sleep_preview":
             self.events.put("sleep_preview")
         elif name == "sound_test" and self.sound:
@@ -2180,6 +2270,8 @@ class App:
             kind = label = "system"
         if self.boot_seq:
             kind = label = "start-up"
+        if self.alarm_shown():
+            kind, label = "alarm", f"alarm · CPU {self.alarm['temp']:.0f} °C"
         return {"slide": "radar" if self.radar else label, "slide_id": "radar" if self.radar else kind,
                 "radar": self.radar, "asleep": self.asleep, "ip": self.ip,
                 "sleep_anim": self.sleep_name if self.asleep and self.sleep_on else None,
@@ -2189,6 +2281,7 @@ class App:
                 "planes": self.data.plane_count() if self.data.planes_ok else None,
                 "photos": len(self.photos.files()), "quotes_ok": sorted(self.data.quotes),
                 "weather_ok": self.data.weather is not None,
+                "cpu_temp": None if self.cpu_c is None else round(self.cpu_c, 1),
                 "orbit": {"state": self.game.state, "score": self.game.score, "best": self.game.best}, "time": datetime.now(self.tz).strftime("%H:%M:%S")}
 
     def run(self):
@@ -2220,7 +2313,8 @@ class App:
                     changed = True
                 if time.monotonic() < self.joined_until:             # the clock may jump now, so not boot_until alone
                     self.boot_until = time.time() + 5
-                asleep = self.effective_asleep(now) and not (self.wifi and self.wifi.active)
+                self.tick_alarm()
+                asleep = self.effective_asleep(now) and not (self.wifi and self.wifi.active) and not self.alarm_shown()
                 if asleep != self.asleep:
                     self.asleep = asleep
                     self.gauge.backlight(self.st["gauge"]["backlight"] and not asleep)
@@ -2228,6 +2322,7 @@ class App:
                     if asleep:
                         self.boot_seq = self.takeover = None
                         self.stop_game()
+                        self.last_crc = None
                         self.start_sleep()
                     else:
                         self.sleep_on = False
