@@ -90,11 +90,13 @@ Every change saves at once and shows on the screen within a second. To lock the 
 
 ## Screens
 
-Photos · Clock · Date · Month calendar · World clocks · Day/month/year progress · Countdown · Hijri date (Umm al-Qura, Arabic month) · Arabic date (weekday, date and Hijri date in Arabic) · Next prayer · Occasions (days to Ramadan, Eid al-Fitr, Arafah, Eid al-Adha, Hijri New Year, Founding Day, National Day; counts Ramadan days during the month) · Share prices · Weather · 3-day forecast · UV index · Wind & humidity · Air quality · Sun · Moon · Retro animations (oscilloscope, plasma, starfield, code rain, bouncing logo, synthwave sunset; one at random each time) · System (QR code to the page, address, CPU temperature). Radar is on key B.
+Photos · Clock · Date · Month calendar · World clocks · Day/month/year progress · Countdown · Hijri date (Umm al-Qura, Arabic month) · Arabic date (weekday, date and Hijri date in Arabic) · Next prayer · Occasions (days to Ramadan, Eid al-Fitr, Arafah, Eid al-Adha, Hijri New Year, Founding Day, National Day; counts Ramadan days during the month) · Share prices · Weather · 3-day forecast · UV index · Wind & humidity · Air quality · Sun · Moon · Retro animations (oscilloscope, plasma, starfield, code rain, bouncing logo, synthwave sunset; one at random each time) · Orbit (a game, see below) · System (QR code to the page, address, CPU temperature). Radar is on key B.
 
 **Start-up:** every time the app starts (also after an update) it plays a short retro sequence: an old TV switching on, start-up checks with real results (memory, gauge, light sensor, sound, network, clock), then the logo drops in on a chiptune while the needle sweeps. A key skips it. It does not play while the display is asleep for the night.
 
 **Sleep:** when the display goes to sleep (at night or after a long press on NEXT) it can show dim, slow pixel art first: a sleeping cat, a robot face snoring, the night sky with the real moon phase, a moon in a nightcap, and a breathing standby light, two minutes each, starting with a different one each time. After the time set on the page (10 or 30 minutes, or all night) the screen goes dark. Any key wakes it.
+
+**Orbit:** a game for the two keys. On its screen a demo plays by itself; press B to start. Your ship runs round the ring and rocks fly out from the middle: hold A to move anticlockwise and B to move clockwise. Every rock that gets past is a point, it speeds up every 15 s (the needle shows how fast), and one hit ends it. After a game, B plays again and A moves on. Holding both keys for 3 s quits. While you play, the screens stop rotating and announcements wait. The best score is kept in `orbit.json` next to `settings.json`.
 
 **Announcements:** when the hour, a prayer time or a price move makes its sound, its screen (clock, that prayer, that ticker) also comes up for 15 s, even when the sound is muted or in quiet hours. Nothing happens for an announcement that is switched off under Sound, while the display sleeps, on the radar, or within a minute of a key press or a change on the page. NEXT closes it early.
 
@@ -105,6 +107,7 @@ Hijri dates and occasions use the Umm al-Qura calendar from aladhan.com (an offl
 - **A (NEXT)**: next screen · hold 1.5 s = sleep/wake · in radar = leave radar · skips the start-up · closes an announcement
 - **B (RADAR)**: radar on/off (on release)
 - **A and B together for 3 s**: a retro animation, also from sleep; again for another one
+- **On the Orbit screen**: B starts a game; while playing, A and B steer (both for 3 s quits)
 
 ## Wiring (BCM numbers, header pins in brackets)
 
@@ -135,4 +138,4 @@ Stop the service first for the hardware tests: `sudo systemctl stop desk-display
 
 ## Files
 
-`desk_display.py` display, gauge, sound, sensors · `settings.py` everything the page can change (saved in `settings.json`) · `web.py` + `web_ui.html` the control page (standard library only) · `wifi_setup.py` + `wifi_ui.html` Wi-Fi setup hotspot · `retro.py` the start-up sequence and retro animations · `prepare-image.sh` readies a master card · `config.example.toml` template for the Pi's `config.toml` (hardware and location) · `update.sh`, `desk-update.service`, `desk-update.timer` automatic updates · `fonts/` Inter and Noto Kufi Arabic (both SIL Open Font License).
+`desk_display.py` display, gauge, sound, sensors · `settings.py` everything the page can change (saved in `settings.json`) · `web.py` + `web_ui.html` the control page (standard library only) · `wifi_setup.py` + `wifi_ui.html` Wi-Fi setup hotspot · `retro.py` the start-up sequence and retro animations · `orbit.py` the Orbit game · `prepare-image.sh` readies a master card · `config.example.toml` template for the Pi's `config.toml` (hardware and location) · `update.sh`, `desk-update.service`, `desk-update.timer` automatic updates · `fonts/` Inter and Noto Kufi Arabic (both SIL Open Font License).

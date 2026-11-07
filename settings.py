@@ -34,6 +34,7 @@ SCREENS = [
     {"id": "sun",        "group": "Weather & sky", "name": "Sun",             "desc": "Sunrise, sunset, daylight left"},
     {"id": "moon",       "group": "Weather & sky", "name": "Moon",            "desc": "Phase and illumination"},
     {"id": "retro",      "group": "Retro",         "name": "Retro animations","desc": "A random one from the Retro list"},
+    {"id": "orbit",      "group": "Retro",         "name": "Orbit (game)",    "desc": "Dodge the rocks: press B on this screen to play, then A and B steer"},
     {"id": "system",     "group": "System",        "name": "System",          "desc": "QR code to this page, address, CPU temperature"},
 ]
 
@@ -76,6 +77,7 @@ SOUND_EVENTS = [
     {"id": "price",  "name": "Share price move",             "desc": "Chime when a ticker moves past the threshold"},
     {"id": "plane",  "name": "Aircraft overhead",            "desc": "Tick when a new aircraft enters the inner ring"},
     {"id": "boot",   "name": "Start-up",                     "desc": "A chiptune when the display starts, also in quiet hours"},
+    {"id": "game",   "name": "Game sounds",                  "desc": "Start, speed-up and game over in Orbit, also in quiet hours"},
 ]
 
 DEFAULTS = {
@@ -101,6 +103,7 @@ DEFAULTS = {
         {"id": "countdown",  "enabled": False, "seconds": 8},
         {"id": "progress",   "enabled": False, "seconds": 8},
         {"id": "retro",      "enabled": False, "seconds": 20},
+        {"id": "orbit",      "enabled": False, "seconds": 20},
         {"id": "system",     "enabled": False, "seconds": 10},
     ],
     "tickers": [
@@ -131,7 +134,7 @@ DEFAULTS = {
         "volume": 60,              # 1-100
         "quiet_from": "22:00",
         "quiet_to": "07:00",
-        "events": {"key": True, "hour": False, "prayer": True, "price": True, "plane": False, "boot": True},
+        "events": {"key": True, "hour": False, "prayer": True, "price": True, "plane": False, "boot": True, "game": True},
         "price_threshold_pct": 2.0,
     },
     "worldclock": [

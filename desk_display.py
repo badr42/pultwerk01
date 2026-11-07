@@ -15,6 +15,7 @@ import argparse
 import io
 import json
 import math
+import os
 import queue
 import random
 import shutil
@@ -34,6 +35,7 @@ from zoneinfo import ZoneInfo
 import numpy as np
 from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont, ImageOps, features
 
+import orbit
 import retro
 from settings import GAUGE_METRICS, RETRO_ANIMATIONS, SCREENS, Settings, _merge as merge_settings
 from wifi_setup import HOTSPOT_IP, WifiSetup
@@ -1167,7 +1169,7 @@ def post_checks(app):
             ("LIGHT", light), ("SOUND", sound), ("NETWORK", network), ("CLOCK", clock)]
 
 
-RENDERERS = {"photo": None, "clock": slide_clock, "date": slide_date, "hijri": slide_hijri, "arabic": slide_arabic,
+RENDERERS = {"photo": None, "orbit": None, "clock": slide_clock, "date": slide_date, "hijri": slide_hijri, "arabic": slide_arabic,
              "occasions": slide_occasions, "price": slide_price, "weather": slide_weather, "forecast": slide_forecast,
              "uv": slide_uv, "wind": slide_wind, "aqi": slide_aqi, "sun": slide_sun, "moon": slide_moon,
              "prayer": slide_prayer, "worldclock": slide_worldclock, "countdown": slide_countdown,
@@ -1432,6 +1434,9 @@ class Sound:
         "plane":  [(1200, 0.03, 0.06), (1200, 0.03, 0)],
         "boot":   [(392, 0.07, 0, "chip"), (523, 0.07, 0, "chip"), (659, 0.07, 0, "chip"), (784, 0.07, 0, "chip"),
                    (1047, 0.08, 0.05, "chip"), (784, 0.07, 0, "chip"), (1047, 0.38, 0, "chip")],
+        "game_start": [(523, 0.05, 0, "chip"), (659, 0.05, 0, "chip"), (784, 0.05, 0, "chip"), (1047, 0.12, 0, "chip")],
+        "game_level": [(784, 0.05, 0.02, "chip"), (1175, 0.08, 0, "chip")],
+        "game_over":  [(659, 0.10, 0, "chip"), (523, 0.10, 0, "chip"), (415, 0.10, 0, "chip"), (330, 0.32, 0, "chip")],
     }
 
     def pcm(self, event, volume):
@@ -1531,6 +1536,7 @@ def setup_buttons(cfg, events):
                     st["timer"].cancel()
 
     def a_pressed():
+        events.put("A_down")                                    # raw key state, for the game
         if r.is_pressed:
             both_down()
 
@@ -1541,16 +1547,19 @@ def setup_buttons(cfg, events):
         events.put("A_long")
 
     def a_released():
+        events.put("A_up")
         if not st["held"] and not st["both"]:
             events.put("A_short")
         st["held"] = False
         released()
 
     def r_pressed():
+        events.put("B_down")
         if a.is_pressed:
             both_down()
 
     def r_released():                                           # on release, so holding both does not open the radar
+        events.put("B_up")
         if not st["both"]:
             events.put("B")
         released()
@@ -1594,6 +1603,8 @@ class App:
         self.sleep_on, self.sleep_t0, self.sleep_until, self.sleep_first = False, 0.0, 0.0, 0
         self.sleep_anim, self.sleep_key, self.sleep_kt, self.sleep_name = None, None, 0.0, None
         self.retro_on_wake = False
+        self.game = orbit.Orbit(best=self.load_best())         # the Orbit screen; its demo runs until B is pressed
+        self.game_t, self.game_keys, self.game_taps = 0.0, {"A": False, "B": False}, set()
         self.lock = threading.Lock()
         self.rebuild_slides()
 
@@ -1702,6 +1713,13 @@ class App:
         kind, arg, _ = self.slides[self.idx]
         if kind == "retro":
             return self.retro_frame(("slide", self.idx, self.slide_t))
+        if kind == "orbit":
+            try:
+                im = self.game.frame()
+            except Exception as e:
+                print(f"[orbit] {e!r}", flush=True)
+                return placeholder()
+            return retro.crt(im) if self.st["retro"].get("crt", True) else im
         if kind == "photo":
             return self.photos.current or placeholder()
         fn = RENDERERS.get(kind)
@@ -1750,7 +1768,7 @@ class App:
             return False
         if self.takeover:
             return self.takeover["kind"] in ("retro", "sleep") or (self.takeover.get("flourish") and time.time() - self.takeover["t0"] < 1)
-        return self.slides[self.idx][0] == "retro"
+        return self.slides[self.idx][0] in ("retro", "orbit")
 
     def show_for(self, kind, arg, seconds, flourish=False):
         self.takeover = {"kind": kind, "arg": arg, "t0": time.time(), "until": time.time() + seconds, "flourish": flourish}
@@ -1762,7 +1780,8 @@ class App:
             return
         self.beep(event, now)
         if (not self.st["display"].get("announce_screens", True) or self.radar or self.boot_seq or self.boot_until
-                or (self.wifi and self.wifi.active) or time.time() - self.last_input < 60):
+                or (self.wifi and self.wifi.active) or time.time() - self.last_input < 60
+                or (self.on_game() and self.game.state != "demo")):
             return
         self.show_for(kind, arg, ANNOUNCE_SECONDS, flourish)
 
@@ -1843,8 +1862,108 @@ class App:
             self.slide_t += time.time() - self.takeover["t0"]          # the rotation carries on where it was
             self.takeover = None
 
+    # -- the Orbit game
+    def best_path(self):
+        return Path(self.settings.path).with_name("orbit.json")
+
+    def load_best(self):
+        try:
+            return int(json.loads(self.best_path().read_text())["best"])
+        except Exception:
+            return 0
+
+    def save_best(self):
+        try:
+            tmp = self.best_path().with_suffix(".tmp")
+            tmp.write_text(json.dumps({"best": self.game.best}))
+            os.replace(tmp, self.best_path())
+        except Exception as e:
+            print(f"[orbit] best score not saved: {e!r}", flush=True)
+
+    def on_game(self):
+        """The Orbit screen is up, not covered by the radar, an announcement or the start-up."""
+        return (not self.radar and not self.takeover and not self.boot_seq and not self.boot_until
+                and not (self.wifi and self.wifi.active) and 0 <= self.idx < len(self.slides)
+                and self.slides[self.idx][0] == "orbit")
+
+    def game_sound(self, name):
+        s = self.st["sound"]
+        if self.sound and not s["muted"] and s["events"].get("game"):   # also in quiet hours: someone is playing
+            self.sound.play(name, s["volume"])
+
+    def game_needle(self, frac):
+        self.gauge_t = time.time() + 3600                       # tick_gauge leaves the needle alone meanwhile
+        threading.Thread(target=self.gauge.show, args=(frac,), daemon=True).start()
+
+    def start_game(self):
+        self.game.start()
+        self.game_t, self.last_input = time.monotonic(), time.time()
+        self.game_taps.clear()
+        self.game_sound("game_start")
+        self.game_needle(0)
+
+    def stop_game(self):
+        """Back to the demo; the rotation carries on from now."""
+        if self.game.state != "demo":
+            self.game.demo()
+            self.slide_t = time.time()
+            self.gauge_t = 0
+
+    def tick_game(self):
+        t = time.monotonic()
+        dt, self.game_t = (t - self.game_t if self.game_t else 0.0), t
+        k, taps = self.game_keys, self.game_taps
+        cues = self.game.step(dt, left=k["A"] or "A" in taps, right=k["B"] or "B" in taps)
+        taps.clear()                                             # a tap shorter than a frame still moves the ship
+        for c in cues:
+            if c == "level":
+                self.game_sound("game_level")
+                self.game_needle(min(1.0, self.game.level / 8))
+            elif c == "over":
+                self.game_sound("game_over")
+                self.game_needle(0)
+                if self.game.new_best:
+                    self.save_best()
+        if self.game.state == "play":
+            self.last_input = time.time()
+        elif self.game.state == "over" and self.game.over_t > 12:
+            self.stop_game()
+
+    def game_event(self, ev):
+        """Keys while the Orbit screen is up. True/False: handled; None: carry on as usual."""
+        st = self.game.state
+        if ev in ("prev", "boot", "sleep_preview", "sleep") or ev.startswith(("show:", "retro:")):
+            self.stop_game()                                     # the web page takes over
+            return None
+        if st == "demo":
+            if ev == "B":
+                self.start_game()
+                return True
+            return None
+        if ev == "AB_long":                                      # both keys held: quit the game
+            self.stop_game()
+            return True
+        if st == "play":
+            return False if ev in ("A_short", "B", "A_long") else None
+        if ev == "B":                                            # game over: B plays again
+            self.start_game()
+            return True
+        if ev in ("A_short", "A_long"):                          # A moves on (or holds for sleep) as usual
+            self.stop_game()
+        return None
+
     def handle(self, ev, now):
         ev = str(ev)
+        if ev in ("A_down", "A_up", "B_down", "B_up"):          # raw key state: only the game uses it
+            down = ev.endswith("_down")
+            self.game_keys[ev[0]] = down
+            if down and self.game.state == "play":
+                self.game_taps.add(ev[0])
+            return False
+        if self.on_game() and not self.asleep:
+            r = self.game_event(ev)
+            if r is not None:
+                return r
         if ev == "AB_long":                                     # both keys held: a retro animation, even from sleep
             self.beep("key", now)
             if self.asleep:
@@ -2047,6 +2166,10 @@ class App:
             self.ip, self.ip_t = local_ip(), time.time()
         if kind == "retro":
             label = f"retro · {self.anim_id}" if self.anim_id else "retro"
+        if kind == "orbit":
+            g = self.game
+            label = {"demo": f"orbit · best {g.best}" if g.best else "orbit", "play": f"orbit · playing, {g.score}",
+                     "over": f"orbit · game over, {g.score}"}[g.state]
         if self.takeover and not self.radar:
             kind = label = self.takeover["kind"]
             if kind == "retro":
@@ -2065,7 +2188,8 @@ class App:
                 "gauge_angle": getattr(self.gauge, "angle", None), "uptime_s": int(time.time() - START),
                 "planes": self.data.plane_count() if self.data.planes_ok else None,
                 "photos": len(self.photos.files()), "quotes_ok": sorted(self.data.quotes),
-                "weather_ok": self.data.weather is not None, "time": datetime.now(self.tz).strftime("%H:%M:%S")}
+                "weather_ok": self.data.weather is not None,
+                "orbit": {"state": self.game.state, "score": self.game.score, "best": self.game.best}, "time": datetime.now(self.tz).strftime("%H:%M:%S")}
 
     def run(self):
         if not self.offline:
@@ -2103,6 +2227,7 @@ class App:
                     self.gauge_t = 0
                     if asleep:
                         self.boot_seq = self.takeover = None
+                        self.stop_game()
                         self.start_sleep()
                     else:
                         self.sleep_on = False
@@ -2135,7 +2260,11 @@ class App:
                 if self.boot_until and time.time() > self.boot_until:
                     self.boot_until, self.slide_t = 0, time.time()
                     changed = True
+                game = self.on_game()
+                if game:
+                    self.tick_game()
                 if (not self.radar and not self.boot_until and not self.boot_seq and not self.takeover
+                        and not (game and self.game.state != "demo")
                         and time.time() - self.slide_t > self.slides[self.idx][2]):
                     self.advance()
                     changed = True
@@ -2223,6 +2352,15 @@ def preview(cfg, settings, out):
                 for i in range(24):
                     im = anim.frame(i / 12)
                 shots.append(save(f"retro-{a}", retro.crt(im)))
+        elif k == "orbit":
+            g = orbit.Orbit(best=42, seed=3)
+            for i in range(60):
+                g.step(1 / 15)
+            shots.append(save("orbit-demo", retro.crt(g.frame())))
+            g.start()
+            for i in range(130):
+                g.step(1 / 15, right=(i // 12) % 3 == 0, left=(i // 12) % 3 == 2)
+            shots.append(save("orbit-play", retro.crt(g.frame())))
         elif k == "price":
             for i, t in enumerate(app.st["tickers"]):
                 shots.append(save(f"price-{t['label'].lower()}", slide_price(app, now, i)))
