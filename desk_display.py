@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
-"""Pultwerk01 desk display: rotating slides, needle gauge, speaker, light sensor, web control.
+"""Pultwerk01 desk display: rotating slides, needle gauge, speaker, web control.
 
 Hardware: EstarDyn 2.10" round TFT (GC9B72, 360x360) + SG90 gauge + MAX98357A speaker
-+ BH1750 light sensor + two keys, on a Raspberry Pi Zero 2 W.  config.toml = hardware,
++ two keys, on a Raspberry Pi Zero 2 W.  config.toml = hardware,
 settings.json = everything the web page changes (http://<pi>:8080).
 
     python desk_display.py                  # run on the Pi
     python desk_display.py --preview out/   # render every slide to PNGs with demo data
-    python desk_display.py --light-test     # print lux readings
     python desk_display.py --gauge-test     # sweep the needle
     python desk_display.py --sound-test     # play every event sound
 """
@@ -1147,13 +1146,6 @@ def post_checks(app):
         except Exception:
             return "OK", True
 
-    def light():
-        if not app.light:
-            return "NONE", True
-        if app.lux is not None:
-            return f"{app.lux:.0f} LX", True
-        return ("FAIL", False) if app.light_failed else ("WAIT", True)
-
     def sound():
         if not (app.sound and app.sound.enabled):
             return "NONE", False
@@ -1171,7 +1163,7 @@ def post_checks(app):
 
     return [("MEMORY", memory), ("DISPLAY", lambda: (f"{S}X{S}", True)),
             ("GAUGE", lambda: ("NONE", True) if isinstance(app.gauge, NullGauge) else ("OK", True)),
-            ("LIGHT", light), ("SOUND", sound), ("NETWORK", network), ("CLOCK", clock)]
+            ("SOUND", sound), ("NETWORK", network), ("CLOCK", clock)]
 
 
 RENDERERS = {"photo": None, "orbit": None, "clock": slide_clock, "date": slide_date, "hijri": slide_hijri, "arabic": slide_arabic,
@@ -1188,65 +1180,6 @@ ALARM_SIREN_S = 30                     # the siren repeats this often while the 
 ALARM_SNOOZE_S = 600                   # a key hides the alarm this long (unless it gets 3 °C hotter)
 ALARM_CLEAR_C = 5                      # the alarm ends this far under the limit
 SLEEP_PREVIEW_S = 5                    # and this long each in the preview from the page
-
-
-# --------------------------------------------------------------------------- ambient light
-class LightBH1750:
-    """GY-302 / BH1750 on I2C. Continuous high-resolution mode, 1 lx steps, ~120 ms per reading."""
-
-    def __init__(self, cfg):
-        from smbus2 import SMBus
-        c = cfg["light"]
-        self.bus = SMBus(1)
-        self.addr = int(c.get("address", 0x23))
-        self.bus.write_byte(self.addr, 0x10)
-        time.sleep(0.2)
-
-    def lux(self):
-        d = self.bus.read_i2c_block_data(self.addr, 0x10, 2)
-        return ((d[0] << 8) | d[1]) / 1.2
-
-
-class LightLDR:
-    """LDR + capacitor charge-time reading, converted to a rough lux-like scale."""
-
-    def __init__(self, cfg):
-        import lgpio
-        self.lgpio = lgpio
-        c = cfg["light"]
-        self.pin, self.bright_s, self.dark_s = c.get("pin", 17), c["bright_s"], c["dark_s"]
-        self.h = lgpio.gpiochip_open(0)
-
-    def lux(self):
-        g, pin = self.lgpio, self.pin
-        g.gpio_claim_output(self.h, pin, 0)
-        time.sleep(0.02)
-        g.gpio_free(self.h, pin)
-        g.gpio_claim_input(self.h, pin)
-        t0 = time.perf_counter()
-        while g.gpio_read(self.h, pin) == 0 and time.perf_counter() - t0 < self.dark_s * 1.5:
-            pass
-        t = max(time.perf_counter() - t0, 1e-5)
-        g.gpio_free(self.h, pin)
-        f = (math.log(self.dark_s) - math.log(t)) / (math.log(self.dark_s) - math.log(self.bright_s))
-        return 3 * (100 ** max(0.0, min(1.0, f)))                       # 3 lx dark .. 300 lx bright
-
-
-def make_light(cfg):
-    s = cfg["light"].get("sensor", "none")
-    if s == "bh1750":
-        return LightBH1750(cfg)
-    if s == "ldr":
-        return LightLDR(cfg)
-    return None
-
-
-def lux_to_brightness(lux, cfg, st):
-    lo_lx, hi_lx = cfg["light"].get("dark_lux", 3), cfg["light"].get("bright_lux", 300)
-    f = (math.log(max(lux, 0.1)) - math.log(lo_lx)) / (math.log(hi_lx) - math.log(lo_lx))
-    f = max(0.0, min(1.0, f))
-    lo, hi = st["min_brightness"], st["max_brightness"]
-    return int(round(lo + (hi - lo) * f))
 
 
 # --------------------------------------------------------------------------- gauge
@@ -1336,8 +1269,6 @@ def gauge_value(app, metric, now):
         v = d.plane_count() if d.planes_ok else None
     elif metric == "uv" and d.weather and d.weather.get("uv") is not None:
         v = d.weather["uv"]
-    elif metric == "lux":
-        v = app.lux
     elif metric == "year":
         yday = now.timetuple().tm_yday
         v = 100 * (yday - 1 + now.hour / 24) / (366 if now.year % 4 == 0 and (now.year % 100 or not now.year % 400) else 365)
@@ -1581,7 +1512,7 @@ def setup_buttons(cfg, events):
 
 # --------------------------------------------------------------------------- app
 class App:
-    def __init__(self, cfg, settings, screen, events, gauge=None, sound=None, light=None):
+    def __init__(self, cfg, settings, screen, events, gauge=None, sound=None):
         self.cfg, self.settings, self.screen, self.events = cfg, settings, screen, events
         self.tz = ZoneInfo(cfg["location"]["timezone"])
         self.st = settings.get()
@@ -1590,9 +1521,7 @@ class App:
         self.photos = Photos(cfg)
         self.gauge = gauge or NullGauge()
         self.sound = sound
-        self.light = light
-        self.lux, self.light_t, self.brightness = None, 0.0, self.st["display"]["brightness"]
-        self.light_failed = False
+        self.brightness = self.st["display"]["brightness"]
         self.slides, self.idx, self.slide_t = [], -1, 0.0
         self.radar, self.radar_t = False, 0.0
         self.override, self.override_sched = None, None
@@ -1648,8 +1577,9 @@ class App:
                 self.data.kick.add("quotes")                     # fetch new tickers now, not in a minute
         self.rebuild_slides()
         self.data.set_area(radar_area(self.cfg, self.st))
-        if not self.st["display"]["auto_brightness"]:
-            self.set_brightness(self.st["display"]["brightness"])
+        self.brightness = self.st["display"]["brightness"]
+        if not self.asleep:                                      # asleep: used when it wakes
+            self.screen.set_level(self.brightness)
         self.gauge.backlight(self.st["gauge"]["backlight"] and not self.asleep)
         self.gauge_t = 0                                         # re-evaluate the needle now
         self.last_crc = None
@@ -2157,27 +2087,6 @@ class App:
         self.gauge_value = gv[0]
         threading.Thread(target=self.gauge.show, args=(gv[1],), daemon=True).start()
 
-    def tick_light(self):
-        if time.time() - self.light_t < self.cfg["light"].get("interval", 2):
-            return
-        self.light_t = time.time()
-        lux = None
-        if self.light:
-            try:
-                lux = self.light.lux()
-            except Exception as e:
-                if self.lux is not None or not self.light_failed:          # once per failure, not every reading
-                    print(f"[light] {e!r}", flush=True)
-                self.light_failed = True
-        if lux is None:
-            self.lux = None
-        else:
-            self.light_failed = False
-            self.lux = lux if self.lux is None else self.lux * 0.6 + lux * 0.4
-        if self.st["display"]["auto_brightness"]:
-            # no sensor or no reading: full brightness, so the screen is never stuck dim
-            self.set_brightness(100 if self.lux is None else lux_to_brightness(self.lux, self.cfg, self.st["display"]))
-
     def tick_events(self, now):
         # hourly tone
         if now.minute == 0 and self.last_hour != now.hour:
@@ -2275,7 +2184,7 @@ class App:
         return {"slide": "radar" if self.radar else label, "slide_id": "radar" if self.radar else kind,
                 "radar": self.radar, "asleep": self.asleep, "ip": self.ip,
                 "sleep_anim": self.sleep_name if self.asleep and self.sleep_on else None,
-                "lux": None if self.lux is None else round(self.lux, 1), "brightness": self.brightness,
+                "brightness": self.brightness,
                 "gauge_value": None if self.gauge_value is None else round(self.gauge_value, 1),
                 "gauge_angle": getattr(self.gauge, "angle", None), "uptime_s": int(time.time() - START),
                 "planes": self.data.plane_count() if self.data.planes_ok else None,
@@ -2288,6 +2197,7 @@ class App:
         if not self.offline:
             threading.Thread(target=self.data.worker, daemon=True).start()
         self.advance()
+        self.screen.set_level(self.brightness)                   # the level from the page, from the start
         if self.effective_asleep(datetime.now(self.tz)):
             pass                                                 # restarted at night (an update): stay dark and quiet
         elif self.st["display"].get("boot_animation", True):
@@ -2341,7 +2251,6 @@ class App:
                     continue
                 if self.boot_seq:
                     changed |= self.boot_cues()
-                self.tick_light()
                 self.tick_events(now)
                 changed |= self.fade_next
                 self.fade_next = False
@@ -2392,7 +2301,6 @@ def demo_fill(app):
                  "forecast": [{"date": str(day + timedelta(i)), "code": c, "hi": hi, "lo": lo}
                               for i, c, hi, lo in ((1, 0, 37.6, 23.2), (2, 3, 35.1, 22.8), (3, 61, 29.4, 19.9))],
                  "t": 0}
-    app.lux = 140.0
     d.aqi = {"aqi": 46, "pm25": 21.4, "pm10": 88.0, "t": 0}
     times = {"Fajr": (4, 41), "Dhuhr": (11, 38), "Asr": (15, 4), "Maghrib": (17, 36), "Isha": (19, 6)}
     for off in (0, 1):
@@ -2485,7 +2393,6 @@ def main():
     ap.add_argument("--config", default=str(DATA / "config.toml"))
     ap.add_argument("--settings", default=str(DATA / "settings.json"))
     ap.add_argument("--preview", metavar="DIR", help="render all slides with demo data and exit")
-    ap.add_argument("--light-test", action="store_true", help="print light readings and exit")
     ap.add_argument("--gauge-test", action="store_true", help="sweep the needle and exit")
     ap.add_argument("--sound-test", action="store_true", help="play every sound and exit")
     ap.add_argument("--demo", action="store_true",
@@ -2495,13 +2402,6 @@ def main():
     settings = Settings(args.settings)
     if args.preview:
         return preview(cfg, settings, args.preview)
-    if args.light_test:
-        lt = make_light(cfg)
-        print("Ctrl+C to stop.")
-        while True:
-            lux = lt.lux()
-            print(f"{lux:8.1f} lx  ->  brightness {lux_to_brightness(lux, cfg, settings.get()['display']):3d}%")
-            time.sleep(0.5)
     if args.gauge_test:
         g = Gauge(cfg)
         print("min, max, middle, then 0..100 % in steps")
@@ -2536,12 +2436,7 @@ def main():
             gauge = Gauge(cfg)
         except Exception as e:
             print(f"[gauge] disabled: {e!r}", flush=True)
-    light = None
-    try:
-        light = make_light(cfg)
-    except Exception as e:
-        print(f"[light] disabled: {e!r}", flush=True)
-    app = App(cfg, settings, screen, events, gauge=gauge, sound=Sound(cfg), light=light)
+    app = App(cfg, settings, screen, events, gauge=gauge, sound=Sound(cfg))
     app.wifi = WifiSetup(cfg)
     if app.wifi.enabled:
         threading.Thread(target=app.wifi.run, daemon=True).start()

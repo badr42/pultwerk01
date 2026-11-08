@@ -63,15 +63,3 @@ enabled = true
 device = "plughw:CARD=MAX98357A,DEV=0"   # the I2S amp; check the name with: aplay -l
 sample_rate = 22050
 keep_open = true                   # one aplay stays open and plays silence between sounds, so the amp never pops
-
-[light]
-# "bh1750" = GY-302 on I2C (SDA pin 3, SCL pin 5, VCC 3.3 V), "ldr" = the old LDR+capacitor on GPIO 17, "none"
-sensor = "bh1750"
-address = 0x23                     # 0x5C if ADDR is tied high
-interval = 2                       # seconds between readings
-dark_lux = 3                       # at or below this the screen is at min brightness
-bright_lux = 300                   # at or above this it is at max brightness
-# LDR fallback only:
-pin = 17
-bright_s = 0.004
-dark_s = 0.300

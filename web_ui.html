@@ -159,13 +159,8 @@ footer{color:var(--faint);font-size:12px;text-align:center;padding:30px 0 calc(4
   <section id="display">
     <h2>Display</h2>
     <div class="card">
-      <div class="row"><div class="grow"><div class="name">Automatic brightness</div><div class="desc" id="luxLine">Follows the light sensor</div></div>
-        <label class="sw"><input type="checkbox" id="autoBright"><span></span></label></div>
-      <div id="autoBox">
-        <div class="slider"><div class="top"><span>Darkest room</span><span class="val" id="minVal"></span></div><input type="range" id="minBright" min="1" max="100"></div>
-        <div class="slider"><div class="top"><span>Brightest room</span><span class="val" id="maxVal"></span></div><input type="range" id="maxBright" min="1" max="100"></div>
-      </div>
-      <div id="manualBox"><div class="slider"><div class="top"><span>Brightness</span><span class="val" id="brightVal"></span></div><input type="range" id="bright" min="1" max="100"></div></div>
+      <div class="slider"><div class="top"><span>Brightness</span><span class="val" id="brightVal"></span></div><input type="range" id="bright" min="1" max="100"></div>
+      <div class="desc" style="padding:0 2px 6px">The same all day. At night the screen sleeps instead (Sleep at night, below).</div>
     </div>
     <div class="card" style="margin-top:12px">
       <div class="row"><div class="grow"><div class="name">Sleep at night</div><div class="desc">Dial light off, then the screen after its sleep animation; any key wakes it</div></div>
@@ -383,11 +378,6 @@ function renderScreens() {
 /* ---------- display ---------- */
 function renderDisplay() {
   const d = S.display;
-  $("#autoBright").checked = d.auto_brightness;
-  $("#autoBox").style.display = d.auto_brightness ? "" : "none";
-  $("#manualBox").style.display = d.auto_brightness ? "none" : "";
-  $("#minBright").value = d.min_brightness; $("#minVal").textContent = d.min_brightness + " %";
-  $("#maxBright").value = d.max_brightness; $("#maxVal").textContent = d.max_brightness + " %";
   $("#bright").value = d.brightness; $("#brightVal").textContent = d.brightness + " %";
   $("#night").checked = d.night_enabled; $("#nightBox").style.display = d.night_enabled ? "" : "none";
   $("#sleepAt").value = d.sleep_at; $("#wakeAt").value = d.wake_at;
@@ -398,14 +388,7 @@ function renderDisplay() {
   $("#sleepBright").value = d.sleep_brightness; $("#sleepBrightVal").textContent = d.sleep_brightness + " %";
 }
 function wireDisplay() {
-  $("#autoBright").onchange = e => { save({display: {auto_brightness: e.target.checked}}); renderDisplay(); };
-  const rng = (id, key, out) => $(id).oninput = e => {
-    let v = +e.target.value;
-    if (key === "min_brightness" && v > S.display.max_brightness) v = S.display.max_brightness;
-    if (key === "max_brightness" && v < S.display.min_brightness) v = S.display.min_brightness;
-    e.target.value = v; $(out).textContent = v + " %"; save({display: {[key]: v}}, 200);
-  };
-  rng("#minBright", "min_brightness", "#minVal"); rng("#maxBright", "max_brightness", "#maxVal"); rng("#bright", "brightness", "#brightVal");
+  $("#bright").oninput = e => { $("#brightVal").textContent = e.target.value + " %"; save({display: {brightness: +e.target.value}}, 200); };
   $("#night").onchange = e => { save({display: {night_enabled: e.target.checked}}); renderDisplay(); };
   $("#sleepAt").onchange = e => e.target.value && save({display: {sleep_at: e.target.value}});
   $("#wakeAt").onchange = e => e.target.value && save({display: {wake_at: e.target.value}});
@@ -631,13 +614,10 @@ async function poll() {
     ST = await api("/api/status");
     const bits = [`<b>${ST.asleep ? "Asleep" + (ST.sleep_anim ? " · " + ST.sleep_anim : "") : ST.slide ? screenName(ST.slide_id) + (ST.slide.includes("·") ? " · " + ST.slide.split("·")[1].trim() : "") : "…"}</b>`];
     if (ST.brightness != null) bits.push(`${ST.brightness} %`);
-    if (ST.lux != null) bits.push(`${ST.lux} lx`);
     $("#now").innerHTML = bits.join(" &nbsp;·&nbsp; ");
     $("#live").classList.toggle("asleep", !!ST.asleep && !ST.sleep_anim);
     $("#sleepBtn").textContent = ST.asleep ? "Wake" : "Sleep";
     $("#radarBtn").classList.toggle("on", !!ST.radar);
-    $("#luxLine").textContent = ST.lux == null ? "Follows the light sensor"
-      : S.display.auto_brightness ? `Room ${ST.lux} lx → ${ST.brightness} %` : `Off · room is ${ST.lux} lx`;
     document.querySelectorAll("#screenList .row").forEach(r => r.classList.toggle("current", r.dataset.id === ST.slide_id));
     const gl = $("#gaugeLive"); if (gl) { const m = CAT.gauge_metrics.find(m => m.id === S.gauge.metric);
       gl.textContent = ST.gauge_value != null ? `${ST.gauge_value}${m && m.unit ? " " + m.unit : ""}` : ""; }

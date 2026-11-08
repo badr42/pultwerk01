@@ -63,7 +63,6 @@ GAUGE_METRICS = [
     {"id": "moon",         "name": "Moon illumination",                   "unit": "%",    "min": 0,   "max": 100},
     {"id": "planes",       "name": "Aircraft within radar range",         "unit": "",     "min": 0,   "max": 20},
     {"id": "uv",           "name": "UV index",                            "unit": "",     "min": 0,   "max": 11},
-    {"id": "lux",          "name": "Room light (light sensor)",           "unit": "lx",   "min": 0,   "max": 500},
     {"id": "year",         "name": "Year progress",                       "unit": "%",    "min": 0,   "max": 100},
     {"id": "hijri_month",  "name": "Hijri month progress",                "unit": "%",    "min": 0,   "max": 100},
     {"id": "day",          "name": "Day progress (midnight to midnight)", "unit": "%",    "min": 0,   "max": 100},
@@ -112,19 +111,16 @@ DEFAULTS = {
         {"symbol": "2222.SR", "label": "ARAMCO"},
     ],
     "display": {
-        "auto_brightness": True,
-        "brightness": 80,          # used when auto is off
-        "min_brightness": 8,       # auto range
-        "max_brightness": 100,
+        "brightness": 100,         # backlight %, the same all day; at night the screen sleeps instead
         "clock_24h": True,
         "night_enabled": True,
-        "sleep_at": "00:30",
-        "wake_at": "06:30",
+        "sleep_at": "03:00",
+        "wake_at": "09:00",
         "boot_info": True,         # show the System screen (QR code to this page) for 20 s after start-up
         "boot_animation": True,    # the retro start-up sequence (retro.py) every time the app starts
-        "announce_screens": True,
+        "announce_screens": True,  # the hour, a prayer or a price move also brings up its screen for a while
         "cpu_alarm": True,         # a warning screen (and siren) when the CPU gets too hot
-        "cpu_alarm_c": 80,         # at this temperature; the Pi itself slows down from 80 °C  # the hour, a prayer or a price move also brings up its screen for a while
+        "cpu_alarm_c": 80,         # at this temperature; the Pi itself slows down from 80 °C
         "sleep_animation": "10",   # while asleep: "off", "10" or "30" minutes of sleepy pixel art, or "night"
         "sleep_brightness": 8,     # backlight % meanwhile
     },
@@ -250,16 +246,16 @@ class Settings:
                              "label": str(t.get("label") or t.get("symbol", "")).strip().upper()[:12]}
                             for t in d.get("tickers", []) if isinstance(t, dict) and str(t.get("symbol", "")).strip()][:8]
             disp, old = d["display"], self._d["display"]
-            disp["brightness"] = _num(disp.get("brightness"), 80, 1, 100, int)
-            disp["min_brightness"] = _num(disp.get("min_brightness"), 8, 1, 100, int)
-            disp["max_brightness"] = _num(disp.get("max_brightness"), 100, disp["min_brightness"], 100, int)
-            disp["sleep_at"] = _hm(disp.get("sleep_at"), old.get("sleep_at", "00:30"))
+            disp["brightness"] = _num(disp.get("brightness"), 100, 1, 100, int)
+            for k in ("auto_brightness", "min_brightness", "max_brightness"):   # the light sensor is gone
+                disp.pop(k, None)
+            disp["sleep_at"] = _hm(disp.get("sleep_at"), old.get("sleep_at", "03:00"))
             if disp.get("sleep_animation") not in SLEEP_ANIMATION_TIMES:
                 disp["sleep_animation"] = old.get("sleep_animation", "10")
             disp["cpu_alarm_c"] = _num(disp.get("cpu_alarm_c"), 80, 60, 90, int)
             disp["sleep_brightness"] = _num(disp.get("sleep_brightness"), 8, 1, 50, int)
-            disp["wake_at"] = _hm(disp.get("wake_at"), old.get("wake_at", "06:30"))
-            for k in ("auto_brightness", "clock_24h", "night_enabled", "boot_info", "boot_animation", "announce_screens", "cpu_alarm"):
+            disp["wake_at"] = _hm(disp.get("wake_at"), old.get("wake_at", "09:00"))
+            for k in ("clock_24h", "night_enabled", "boot_info", "boot_animation", "announce_screens", "cpu_alarm"):
                 disp[k] = bool(disp.get(k))
             d["gauge"]["backlight"] = bool(d["gauge"].get("backlight"))
             if d["gauge"].get("metric") not in {m["id"] for m in GAUGE_METRICS}:

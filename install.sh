@@ -36,14 +36,14 @@ chmod 755 "$DEST/update.sh"
 echo "== packages"
 sudo apt-get update -qq
 sudo apt-get install -y python3-gpiozero python3-lgpio python3-spidev python3-numpy python3-pil \
-  python3-smbus2 python3-qrcode libraqm0 alsa-utils i2c-tools curl network-manager dnsmasq-base
+  python3-qrcode libraqm0 alsa-utils curl network-manager dnsmasq-base
 [ -x "$HOME/.venvs/display/bin/python" ] || python3 -m venv --system-site-packages "$HOME/.venvs/display"
 "$HOME/.venvs/display/bin/pip" install -q -r "$SRC/requirements.txt"
 
-echo "== interfaces: SPI (screen), I2C (light sensor), I2S (amp)"
+echo "== interfaces: SPI (screen), I2S (amp)"
 CFG=/boot/firmware/config.txt; [ -f "$CFG" ] || CFG=/boot/config.txt
 REBOOT=0
-for line in "dtparam=spi=on" "dtparam=i2c_arm=on" "dtparam=audio=off" "dtoverlay=max98357a"; do
+for line in "dtparam=spi=on" "dtparam=audio=off" "dtoverlay=max98357a"; do
   if ! grep -qxF "$line" "$CFG"; then
     # switch off a conflicting "audio=on" rather than adding a second line
     [ "$line" = "dtparam=audio=off" ] && sudo sed -i 's/^dtparam=audio=on$/dtparam=audio=off/' "$CFG"
@@ -51,7 +51,7 @@ for line in "dtparam=spi=on" "dtparam=i2c_arm=on" "dtparam=audio=off" "dtoverlay
     echo "added $line"; REBOOT=1
   fi
 done
-sudo usermod -aG gpio,i2c,spi,audio "$USER" || true
+sudo usermod -aG gpio,spi,audio "$USER" || true
 
 echo "== wi-fi setup"
 # the app runs as you and joins networks chosen on the setup page
